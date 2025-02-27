@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${postgres_user}
+      POSTGRES_PASSWORD: ${postgres_password}
+      POSTGRES_DB: esports
+      READER_PASSWORD: ${reader_password}
+    volumes:
+        - ./data:/var/lib/postgresql/data
+volumes:
+  postgresql_data:
