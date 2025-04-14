@@ -8,8 +8,7 @@ import (
 
 	"encoding/json"
 
-	"github.com/feimaomiao/stalka/jsontypes"
-
+	pandatypes "github.com/feimaomiao/stalka/pandatypes"
 	// loads .env file automatically.
 	_ "github.com/joho/godotenv/autoload"
 )
@@ -33,7 +32,7 @@ func (client *PandaClient) UpdateGames() error {
 		return err
 	}
 
-	var result jsontypes.GameLikes
+	var result pandatypes.GameLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return err
@@ -65,7 +64,7 @@ func (client *PandaClient) GetLeagues() error {
 		return err
 	}
 
-	var result jsontypes.LeagueLikes
+	var result pandatypes.LeagueLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return err
@@ -97,7 +96,7 @@ func (client *PandaClient) GetSeries() error {
 		return err
 	}
 
-	var result jsontypes.SeriesLikes
+	var result pandatypes.SeriesLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		client.logger.Error("Error unmarshalling response: %v", err)
@@ -134,7 +133,7 @@ func (client *PandaClient) GetTournaments() error {
 		return err
 	}
 
-	var result jsontypes.TournamentLikes
+	var result pandatypes.TournamentLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return err
@@ -156,7 +155,7 @@ func (client *PandaClient) GetTournaments() error {
 }
 
 // / Goroutine to get one page of matches.
-func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- jsontypes.ResultMatchLikes) {
+func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- pandatypes.ResultMatchLikes) {
 	polarity := 2
 	defer wg.Done()
 	client.logger.Infof("Getting upcoming matches page %d", page)
@@ -169,25 +168,25 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 	resp, err := client.MakeRequest([]string{"matches", reqStr}, pageMap)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		client.logger.Errorf("Error making request to Pandascore API %v, %d on request %d", err, resp.StatusCode, page)
-		ch <- jsontypes.ResultMatchLikes{Matches: nil, Err: err}
+		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		client.logger.Errorf("Error reading response: %v", err)
-		ch <- jsontypes.ResultMatchLikes{Matches: nil, Err: err}
+		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
 
-	var result jsontypes.MatchLikes
+	var result pandatypes.MatchLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		client.logger.Errorf("Error unmarshalling response: %v", err)
-		ch <- jsontypes.ResultMatchLikes{Matches: nil, Err: err}
+		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
-	ch <- jsontypes.ResultMatchLikes{Matches: result, Err: nil}
+	ch <- pandatypes.ResultMatchLikes{Matches: result, Err: nil}
 }
 
 const Pages = 20
@@ -195,10 +194,10 @@ const Pages = 20
 // GetMatches gets all upcoming matches and writes to the database.
 func (client *PandaClient) GetMatches() error {
 	client.logger.Info("Getting matches")
-	var result jsontypes.MatchLikes
+	var result pandatypes.MatchLikes
 	var wg sync.WaitGroup
 
-	varChan := make(chan jsontypes.ResultMatchLikes, Pages)
+	varChan := make(chan pandatypes.ResultMatchLikes, Pages)
 	for i := 1; i <= Pages; i++ {
 		wg.Add(1)
 		go client.getMatchPage(i, &wg, varChan)

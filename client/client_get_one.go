@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/feimaomiao/stalka/jsontypes"
+	pandatypes "github.com/feimaomiao/stalka/pandatypes"
 )
 
 func flagToString(flag GetChoice) (string, error) {
@@ -31,17 +31,17 @@ func flagToString(flag GetChoice) (string, error) {
 	}
 }
 
-func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (jsontypes.PandaDataLike, error) {
+func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (pandatypes.PandaDataLike, error) {
 	switch flag {
 	case FlagGame:
-		var result jsontypes.GameLike
+		var result pandatypes.GameLike
 		err := json.Unmarshal(body, &result)
 		if err != nil {
 			return nil, err
 		}
 		return result, nil
 	case FlagLeague:
-		var result jsontypes.LeagueLike
+		var result pandatypes.LeagueLike
 		err := json.Unmarshal(body, &result)
 		if err != nil {
 			return nil, err
@@ -52,7 +52,7 @@ func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (jsontypes
 		}
 		return result, nil
 	case FlagSeries:
-		var result jsontypes.SeriesLike
+		var result pandatypes.SeriesLike
 		err := json.Unmarshal(body, &result)
 		if err != nil {
 			return nil, err
@@ -63,7 +63,7 @@ func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (jsontypes
 		}
 		return result, nil
 	case FlagTournament:
-		var result jsontypes.TournamentLike
+		var result pandatypes.TournamentLike
 		err := json.Unmarshal(body, &result)
 		if err != nil {
 			return nil, err
@@ -74,7 +74,7 @@ func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (jsontypes
 		}
 		return result, nil
 	case FlagMatch:
-		var result jsontypes.MatchLike
+		var result pandatypes.MatchLike
 		err := json.Unmarshal(body, &result)
 		if err != nil {
 			return nil, err
@@ -126,7 +126,7 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 	return nil
 }
 
-func (client *PandaClient) WriteMatches(matches jsontypes.MatchLikes) {
+func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 	for _, match := range matches {
 		client.logger.Debugf("Checking if tournament %d exists", match.TournamentID)
 		err := client.ExistCheck(match.TournamentID, FlagTournament)
@@ -135,7 +135,7 @@ func (client *PandaClient) WriteMatches(matches jsontypes.MatchLikes) {
 			continue
 		}
 		client.logger.Infof("Writing match %s", match.Name)
-		row, success := match.ToRow().(jsontypes.MatchRow)
+		row, success := match.ToRow().(pandatypes.MatchRow)
 		if !success {
 			client.logger.Errorf("Error converting match row to match row (??), %v", row)
 			continue
@@ -151,7 +151,7 @@ func (client *PandaClient) WriteMatches(matches jsontypes.MatchLikes) {
 	}
 }
 
-func (client *PandaClient) checkTeam(match jsontypes.MatchLike) {
+func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 	if match.WinnerType != "Team" {
 		client.logger.Infof("Match %d is not a team match", match.ID)
 		return
@@ -164,7 +164,7 @@ func (client *PandaClient) checkTeam(match jsontypes.MatchLike) {
 		}
 		if !exists {
 			client.logger.Infof("Team %s does not exist", opponent.Opponent.Name)
-			err = jsontypes.TeamRow{
+			err = pandatypes.TeamRow{
 				ID:        opponent.Opponent.ID,
 				Name:      opponent.Opponent.Name,
 				Acronym:   opponent.Opponent.Acronym,

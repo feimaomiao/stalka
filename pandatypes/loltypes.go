@@ -1,4 +1,4 @@
-package jsontypes
+package pandatypes
 
 import (
 	"database/sql"
