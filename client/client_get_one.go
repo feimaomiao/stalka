@@ -1,6 +1,7 @@
 package client
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -178,4 +179,58 @@ func (client *PandaClient) checkTeam(match jsontypes.MatchLike) {
 			client.logger.Infof("Team %s exists", opponent.Opponent.Name)
 		}
 	}
+}
+
+// TeamExists checks if a team exists in the database.
+// @param db - the database connection
+// @param teamID - the ID of the team to check
+// @returns true if the team exists, false otherwise, and an error if one occurred.
+func TeamExists(db *sql.DB, teamID int) (bool, error) {
+	var id int
+	err := db.QueryRow("SELECT id FROM teams WHERE id = $1", teamID).Scan(&id)
+	if err != nil && err != sql.ErrNoRows {
+		return false, err
+	}
+	return id != 0, nil
+}
+
+// ExistCheck checks if an entity exists in the database.
+// If entity does not exist, get it from the api
+// @param id - the ID of the entity to check
+// @param flag - the type of entity to check
+// It takes an ID and a flag indicating the type of entity to check.
+func (client *PandaClient) ExistCheck(id int, flag GetChoice) error {
+	var dbString string
+	switch flag {
+	case FlagGame:
+		dbString = "SELECT id FROM games WHERE id = $1"
+	case FlagLeague:
+		dbString = "SELECT id FROM leagues WHERE id = $1"
+	case FlagSeries:
+		dbString = "SELECT id FROM series WHERE id = $1"
+	case FlagTournament:
+		dbString = "SELECT id FROM tournaments WHERE id = $1"
+	case FlagMatch:
+		dbString = "SELECT id FROM matches WHERE id = $1"
+	case FlagTeam:
+		dbString = "SELECT id FROM teams WHERE id = $1"
+	default:
+		client.logger.Error("Invalid flag")
+		return fmt.Errorf("invalid flag: %d", flag)
+	}
+	// checks whether it exists
+	err := client.dbConnector.QueryRow(dbString, id).Scan(&id)
+	// error exists
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	// does not exist
+	if id == 0 || errors.Is(err, sql.ErrNoRows) {
+		client.logger.Infof("%d %d currently does not exist", flag, id)
+		err = client.GetOne(id, flag)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
