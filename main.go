@@ -11,35 +11,21 @@ import (
 func main() {
 	logger, _ := zap.NewDevelopment()
 	sugar := logger.Sugar()
-	database.Database_init(sugar)
+	err := database.Init(sugar)
+	if err != nil {
+		sugar.Fatal(err)
+	}
 	client, err := client.NewPandaClient(sugar)
 	if err != nil {
 		sugar.Fatal(err)
 	}
-	err = client.UpdateGames()
+	err = client.Startup()
 	if err != nil {
 		sugar.Fatal(err)
 	}
-	err = client.GetLeagues()
-	if err != nil {
-		sugar.Fatal(err)
-	}
-	err = client.GetSeries()
-	if err != nil {
-		sugar.Fatal(err)
-	}
-	err = client.GetTournaments()
-	if err != nil {
-		sugar.Fatal(err)
-	}
-	err = client.GetMatches()
-	if err != nil {
-		sugar.Fatal(err)
-	}
-	sugar.Infof("Done with initial setup, made %d requests", client.GetRun())
-	sugar.Sync()
-	matchTicker := time.NewTicker(2 * time.Hour)
-	setupTicker := time.NewTicker(24 * time.Hour)
+	day := 24
+	matchTicker := time.NewTicker(time.Hour)
+	setupTicker := time.NewTicker(time.Duration(day) * time.Hour)
 	defer matchTicker.Stop()
 	defer setupTicker.Stop()
 	go func() {
@@ -51,7 +37,6 @@ func main() {
 			}
 			sugar.Infof("Done with run, made %d requests so far", client.GetRun())
 		}
-		sugar.Sync()
 	}()
 	go func() {
 		for range setupTicker.C {
@@ -74,30 +59,8 @@ func main() {
 			}
 			sugar.Infof("Done with setup, made %d requests so far", client.GetRun())
 		}
-		sugar.Sync()
 	}()
 	for {
-		time.Sleep(time.Hour * 1)
+		time.Sleep(time.Hour)
 	}
 }
-
-// func main() {
-// 	ticker := time.NewTicker(time.Second * 2)
-// 	ticker2 := time.NewTicker(time.Second * 4)
-// 	defer ticker.Stop()
-// 	defer ticker2.Stop()
-// 	go func() {
-// 		for range ticker2.C {
-// 			fmt.Println("Tick2")
-// 		}
-// 	}()
-// 	go func() {
-// 		for range ticker.C {
-// 			fmt.Println("Tick")
-// 		}
-// 	}()
-// 	for {
-// 		time.Sleep(time.Hour * 1)
-// 	}
-
-// }

@@ -2,21 +2,27 @@ package client
 
 import (
 	"io"
+	"net/http"
+	"strconv"
 	"sync"
 
 	"encoding/json"
 
-	"fmt"
+	"github.com/feimaomiao/stalka/jsontypes"
 
-	"github.com/feimaomiao/stalka/JsonTypes"
+	// loads .env file automatically.
 	_ "github.com/joho/godotenv/autoload"
 )
 
-// / UpdateGames updates all games in the database
+const (
+	sortedBy = "-modified_at"
+)
+
+// UpdateGames updates all games in the database.
 func (client *PandaClient) UpdateGames() error {
 	client.logger.Info("Updating games")
 	resp, err := client.MakeRequest([]string{"videogames"}, nil)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		client.logger.Error("Error making request to Pandascore API")
 		return err
 	}
@@ -27,7 +33,7 @@ func (client *PandaClient) UpdateGames() error {
 		return err
 	}
 
-	var result JsonTypes.GameLikes
+	var result jsontypes.GameLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return err
@@ -42,13 +48,13 @@ func (client *PandaClient) UpdateGames() error {
 	return nil
 }
 
-// / GetLeagues gets the first 100 leagues from the Pandascore API
+// GetLeagues gets the first 100 leagues from the Pandascore API.
 func (client *PandaClient) GetLeagues() error {
 	client.logger.Info("Getting leagues")
 	keys := make(map[string]string)
-	keys["sort"] = "-modified_at"
+	keys["sort"] = sortedBy
 	resp, err := client.MakeRequest([]string{"leagues"}, keys)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		client.logger.Error("Error making request to Pandascore API")
 		return err
 	}
@@ -59,14 +65,14 @@ func (client *PandaClient) GetLeagues() error {
 		return err
 	}
 
-	var result JsonTypes.LeagueLikes
+	var result jsontypes.LeagueLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return err
 	}
 	for _, league := range result {
 		client.logger.Infof("Writing league %s", league.Name)
-		err := league.ToRow().WriteToDB(client.dbConnector)
+		err = league.ToRow().WriteToDB(client.dbConnector)
 		if err != nil {
 			return err
 		}
@@ -74,14 +80,12 @@ func (client *PandaClient) GetLeagues() error {
 	return nil
 }
 
-// / GetSeries gets the first 100 series from the Pandascore API
-// / This should be called only at startup
 func (client *PandaClient) GetSeries() error {
 	client.logger.Info("Getting series")
 	keys := make(map[string]string)
-	keys["sort"] = "-modified_at"
+	keys["sort"] = sortedBy
 	resp, err := client.MakeRequest([]string{"series"}, nil)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		client.logger.Error("Error making request to Pandascore API")
 		return err
 	}
@@ -93,15 +97,14 @@ func (client *PandaClient) GetSeries() error {
 		return err
 	}
 
-	var result JsonTypes.SeriesLikes
+	var result jsontypes.SeriesLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		client.logger.Error("Error unmarshalling response: %v", err)
 		return err
 	}
 	for _, series := range result {
-		client.logger.Debugf("Checking if leagueid = .League.ID exists, %t, %d ,%d", series.LeagueID == series.League.ID, series.LeagueID, series.League.ID)
-		err = client.leagueExistsCheck(series.League.ID)
+		err = client.ExistCheck(series.League.ID, FlagLeague)
 		if err != nil {
 			client.logger.Error("Error checking if league exists: %v", err)
 			continue
@@ -118,9 +121,9 @@ func (client *PandaClient) GetSeries() error {
 func (client *PandaClient) GetTournaments() error {
 	client.logger.Info("Getting tournaments")
 	keys := make(map[string]string)
-	keys["sort"] = "-modified_at"
+	keys["sort"] = sortedBy
 	resp, err := client.MakeRequest([]string{"tournaments"}, keys)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		client.logger.Error("Error making request to Pandascore API")
 		return err
 	}
@@ -131,14 +134,14 @@ func (client *PandaClient) GetTournaments() error {
 		return err
 	}
 
-	var result JsonTypes.TournamentLikes
+	var result jsontypes.TournamentLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return err
 	}
 	for _, tournament := range result {
 		client.logger.Debugf("Checking if series exists %d", tournament.SerieID)
-		err := client.seriesExistsCheck(tournament.SerieID)
+		err = client.ExistCheck(tournament.SerieID, FlagSeries)
 		if err != nil {
 			client.logger.Error(err)
 			continue
@@ -152,8 +155,9 @@ func (client *PandaClient) GetTournaments() error {
 	return nil
 }
 
-// / Goroutine to get one page of matches
-func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- JsonTypes.ResultMatchLikes) {
+// / Goroutine to get one page of matches.
+func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- jsontypes.ResultMatchLikes) {
+	polarity := 2
 	defer wg.Done()
 	client.logger.Infof("Getting upcoming matches page %d", page)
 	reqStr := "upcoming"
@@ -161,39 +165,41 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 		reqStr = "past"
 	}
 	pageMap := make(map[string]string)
-	pageMap["page"] = fmt.Sprint(page / 2)
+	pageMap["page"] = strconv.Itoa(page / polarity)
 	resp, err := client.MakeRequest([]string{"matches", reqStr}, pageMap)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		client.logger.Errorf("Error making request to Pandascore API %v, %d on request %d", err, resp.StatusCode, page)
-		ch <- JsonTypes.ResultMatchLikes{Err: err}
+		ch <- jsontypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		client.logger.Errorf("Error reading response: %v", err)
-		ch <- JsonTypes.ResultMatchLikes{Err: err}
+		ch <- jsontypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
 
-	var result JsonTypes.MatchLikes
+	var result jsontypes.MatchLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		client.logger.Errorf("Error unmarshalling response: %v", err)
-		ch <- JsonTypes.ResultMatchLikes{Err: err}
+		ch <- jsontypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
-	ch <- JsonTypes.ResultMatchLikes{Matches: result}
+	ch <- jsontypes.ResultMatchLikes{Matches: result, Err: nil}
 }
 
-// / GetUpcoming gets all upcoming matches and writes to the database
+const Pages = 20
+
+// GetMatches gets all upcoming matches and writes to the database.
 func (client *PandaClient) GetMatches() error {
 	client.logger.Info("Getting matches")
-	var result JsonTypes.MatchLikes
+	var result jsontypes.MatchLikes
 	var wg sync.WaitGroup
 
-	varChan := make(chan JsonTypes.ResultMatchLikes, 20)
-	for i := 1; i <= 20; i++ {
+	varChan := make(chan jsontypes.ResultMatchLikes, Pages)
+	for i := 1; i <= Pages; i++ {
 		wg.Add(1)
 		go client.getMatchPage(i, &wg, varChan)
 	}
@@ -206,49 +212,6 @@ func (client *PandaClient) GetMatches() error {
 		}
 		result = append(result, res.Matches...)
 	}
-	for _, match := range result {
-		client.logger.Debugf("Checking if tournament exists %d", match.TournamentID)
-		err := client.tournamentExistsCheck(match.TournamentID)
-		if err != nil {
-			client.logger.Error(err)
-			continue
-		}
-		client.logger.Infof("Writing match %s", match.Name)
-		row := match.ToRow()
-		err = row.WriteToDB(client.dbConnector)
-		if err != nil {
-			client.logger.Error(err)
-			continue
-		}
-		if row.Finished {
-			if match.WinnerType != "Team" {
-				client.logger.Errorf("Match %d winner type is not team", match.ID)
-				continue
-			}
-			for _, opponents := range match.Opponents {
-				exists, err := TeamExists(client.dbConnector, opponents.Opponent.ID)
-				if err != nil {
-					client.logger.Error(err)
-					continue
-				}
-				if !exists {
-					client.logger.Infof("Team %d does not exist", opponents.Opponent.ID)
-					tr := JsonTypes.TeamRow{
-						ID:         opponents.Opponent.ID,
-						Name:       opponents.Opponent.Name,
-						Acronym:    opponents.Opponent.Acronym,
-						Slug:       opponents.Opponent.Slug,
-						Image_link: opponents.Opponent.ImageURL}
-					err = tr.WriteToDB(client.dbConnector)
-					if err != nil {
-						client.logger.Error(err)
-						continue
-					}
-				} else {
-					client.logger.Infof("Team %d exists", opponents.Opponent.ID)
-				}
-			}
-		}
-	}
+	client.WriteMatches(result)
 	return nil
 }
