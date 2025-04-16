@@ -59,8 +59,8 @@ jobs:
           context: .
           push: true
           tags: |
-            feimaomiao/stalka:latest
-            feimaomiao/stalka:${{ steps.vars.outputs.sha_short }}
+            ghcr.io/feimaomiao/stalka:latest
+            ghcr.io/feimaomiao/stalka:${{ steps.vars.outputs.sha_short }}
       # This step generates an artifact attestation for the image, which is an unforgeable statement about where and how it was built. It increases supply chain security for people who consume the image. For more information, see [Using artifact attestations to establish provenance for builds](/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds).
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
