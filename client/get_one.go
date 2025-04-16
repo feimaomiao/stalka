@@ -12,6 +12,7 @@ import (
 	pandatypes "github.com/feimaomiao/stalka/pandatypes"
 )
 
+// @returns the string representation of the flag and an error if one occurred.
 func flagToString(flag GetChoice) (string, error) {
 	switch flag {
 	case FlagGame:
@@ -31,6 +32,7 @@ func flagToString(flag GetChoice) (string, error) {
 	}
 }
 
+// @returns the parsed entity and an error if one occurred.
 func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (pandatypes.PandaDataLike, error) {
 	switch flag {
 	case FlagGame:
@@ -90,6 +92,8 @@ func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (pandatype
 		return nil, fmt.Errorf("invalid flag: %d", flag)
 	}
 }
+
+// @returns an error if one occurred.
 func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 	searchString, err := flagToString(flag)
 	if err != nil {
@@ -126,6 +130,7 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 	return nil
 }
 
+// @param matches - the matches to write.
 func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 	for _, match := range matches {
 		client.logger.Debugf("Checking if tournament %d exists", match.TournamentID)
@@ -151,6 +156,7 @@ func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 	}
 }
 
+// @param match - the match to check.
 func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 	if match.WinnerType != "Team" {
 		client.logger.Infof("Match %d is not a team match", match.ID)
@@ -194,11 +200,7 @@ func TeamExists(db *sql.DB, teamID int) (bool, error) {
 	return id != 0, nil
 }
 
-// ExistCheck checks if an entity exists in the database.
-// If entity does not exist, get it from the api
-// @param id - the ID of the entity to check
-// @param flag - the type of entity to check
-// It takes an ID and a flag indicating the type of entity to check.
+// @returns an error if one occurred.
 func (client *PandaClient) ExistCheck(id int, flag GetChoice) error {
 	var dbString string
 	switch flag {
@@ -218,13 +220,11 @@ func (client *PandaClient) ExistCheck(id int, flag GetChoice) error {
 		client.logger.Error("Invalid flag")
 		return fmt.Errorf("invalid flag: %d", flag)
 	}
-	// checks whether it exists
 	err := client.dbConnector.QueryRow(dbString, id).Scan(&id)
-	// error exists
+	// we ignore the error if it is sql.ErrNoRows
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	// does not exist
 	if id == 0 || errors.Is(err, sql.ErrNoRows) {
 		client.logger.Infof("%d %d currently does not exist", flag, id)
 		err = client.GetOne(id, flag)

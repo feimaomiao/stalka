@@ -15,9 +15,10 @@ import (
 
 const (
 	sortedBy = "-modified_at"
+	Pages    = 20
 )
 
-// UpdateGames updates all games in the database.
+// @returns an error if one occurred.
 func (client *PandaClient) UpdateGames() error {
 	client.logger.Info("Updating games")
 	resp, err := client.MakeRequest([]string{"videogames"}, nil)
@@ -47,7 +48,7 @@ func (client *PandaClient) UpdateGames() error {
 	return nil
 }
 
-// GetLeagues gets the first 100 leagues from the Pandascore API.
+// @returns an error if one occurred.
 func (client *PandaClient) GetLeagues() error {
 	client.logger.Info("Getting leagues")
 	keys := make(map[string]string)
@@ -79,6 +80,7 @@ func (client *PandaClient) GetLeagues() error {
 	return nil
 }
 
+// @returns an error if one occurred.
 func (client *PandaClient) GetSeries() error {
 	client.logger.Info("Getting series")
 	keys := make(map[string]string)
@@ -117,6 +119,7 @@ func (client *PandaClient) GetSeries() error {
 	return nil
 }
 
+// @returns an error if one occurred.
 func (client *PandaClient) GetTournaments() error {
 	client.logger.Info("Getting tournaments")
 	keys := make(map[string]string)
@@ -154,7 +157,7 @@ func (client *PandaClient) GetTournaments() error {
 	return nil
 }
 
-// / Goroutine to get one page of matches.
+// Goroutine to get one page of matches. Sends the data to the channel.
 func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- pandatypes.ResultMatchLikes) {
 	polarity := 2
 	defer wg.Done()
@@ -164,6 +167,8 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 		reqStr = "past"
 	}
 	pageMap := make(map[string]string)
+	// odd pages are past matches, even pages are upcoming matches
+	// there are 20 pages in total
 	pageMap["page"] = strconv.Itoa(page / polarity)
 	resp, err := client.MakeRequest([]string{"matches", reqStr}, pageMap)
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -186,12 +191,11 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
+	// channel is bounded to the amount of pages get
 	ch <- pandatypes.ResultMatchLikes{Matches: result, Err: nil}
 }
 
-const Pages = 20
-
-// GetMatches gets all upcoming matches and writes to the database.
+// @returns an error if one occurred.
 func (client *PandaClient) GetMatches() error {
 	client.logger.Info("Getting matches")
 	var result pandatypes.MatchLikes
