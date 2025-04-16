@@ -100,7 +100,6 @@ func (client *PandaClient) MakeRequest(paths []string, params map[string]string)
 	if err != nil {
 		return nil, err
 	}
-
 	req.Header.Add("Accept", "application/json")
 	req.Header.Add("Authorization", "Bearer "+client.pandasecret)
 	q := req.URL.Query()

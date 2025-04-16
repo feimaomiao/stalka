@@ -18,6 +18,7 @@ const (
 	Pages    = 20
 )
 
+// UpdateGames updates all games in the database.
 // @returns an error if one occurred.
 func (client *PandaClient) UpdateGames() error {
 	client.logger.Info("Updating games")
@@ -48,6 +49,7 @@ func (client *PandaClient) UpdateGames() error {
 	return nil
 }
 
+// GetLeagues gets the first 100 leagues from the Pandascore API.
 // @returns an error if one occurred.
 func (client *PandaClient) GetLeagues() error {
 	client.logger.Info("Getting leagues")
@@ -80,6 +82,7 @@ func (client *PandaClient) GetLeagues() error {
 	return nil
 }
 
+// GetSeries gets the first 100 series from the Pandascore API.
 // @returns an error if one occurred.
 func (client *PandaClient) GetSeries() error {
 	client.logger.Info("Getting series")
@@ -119,6 +122,7 @@ func (client *PandaClient) GetSeries() error {
 	return nil
 }
 
+// GetTournaments gets the first 100 tournaments from the Pandascore API.
 // @returns an error if one occurred.
 func (client *PandaClient) GetTournaments() error {
 	client.logger.Info("Getting tournaments")
@@ -195,6 +199,7 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 	ch <- pandatypes.ResultMatchLikes{Matches: result, Err: nil}
 }
 
+// GetMatches gets all upcoming and past matches and writes to the database.
 // @returns an error if one occurred.
 func (client *PandaClient) GetMatches() error {
 	client.logger.Info("Getting matches")

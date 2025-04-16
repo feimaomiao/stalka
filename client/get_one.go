@@ -12,6 +12,8 @@ import (
 	pandatypes "github.com/feimaomiao/stalka/pandatypes"
 )
 
+// converts the flag to a pandaapi recognized string.
+// @param flag - the flag to convert.
 // @returns the string representation of the flag and an error if one occurred.
 func flagToString(flag GetChoice) (string, error) {
 	switch flag {
@@ -32,6 +34,10 @@ func flagToString(flag GetChoice) (string, error) {
 	}
 }
 
+// ParseResponse parses the response body to a datatype based on the flag.
+// It also ensures that all dependencies are checked and created.
+// @param body - the response body to parse.
+// @param flag - the type of entity to parse.
 // @returns the parsed entity and an error if one occurred.
 func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (pandatypes.PandaDataLike, error) {
 	switch flag {
@@ -93,6 +99,9 @@ func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (pandatype
 	}
 }
 
+// GetOne gets a single entity from the Pandascore API.
+// @param id - the ID of the entity to get.
+// @param flag - the type of entity to get.
 // @returns an error if one occurred.
 func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 	searchString, err := flagToString(flag)
@@ -130,6 +139,7 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 	return nil
 }
 
+// WriteMatches writes the matches to the database.
 // @param matches - the matches to write.
 func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 	for _, match := range matches {
@@ -156,6 +166,7 @@ func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 	}
 }
 
+// checkTeam checks if the teams in the match exist in the database.
 // @param match - the match to check.
 func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 	if match.WinnerType != "Team" {
@@ -200,6 +211,10 @@ func TeamExists(db *sql.DB, teamID int) (bool, error) {
 	return id != 0, nil
 }
 
+// ExistCheck checks if an entity exists in the database.
+// If entity does not exist, get it from the api.
+// @param id - the ID of the entity to check.
+// @param flag - the type of entity to check.
 // @returns an error if one occurred.
 func (client *PandaClient) ExistCheck(id int, flag GetChoice) error {
 	var dbString string
