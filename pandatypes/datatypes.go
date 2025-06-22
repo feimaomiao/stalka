@@ -534,6 +534,7 @@ func (row MatchRow) WriteToDB(db *sql.DB) error {
 
 type TeamRow struct {
 	ID        int
+	GameID    int
 	Name      string
 	Acronym   string
 	Slug      string
@@ -542,8 +543,9 @@ type TeamRow struct {
 
 func (row TeamRow) WriteToDB(db *sql.DB) error {
 	_, err := db.Exec(
-		"INSERT INTO teams (id, name,acronym, slug, image_link) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
+		"INSERT INTO teams (id, game_id, name, acronym, slug, image_link) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
+		row.GameID,
 		row.Name,
 		row.Acronym,
 		row.Slug,

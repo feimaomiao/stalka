@@ -183,6 +183,7 @@ func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 			client.logger.Infof("Team %s does not exist", opponent.Opponent.Name)
 			err = pandatypes.TeamRow{
 				ID:        opponent.Opponent.ID,
+				GameID:    match.Videogame.ID,
 				Name:      opponent.Opponent.Name,
 				Acronym:   opponent.Opponent.Acronym,
 				Slug:      opponent.Opponent.Slug,
