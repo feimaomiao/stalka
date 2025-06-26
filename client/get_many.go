@@ -52,31 +52,34 @@ func (client *PandaClient) UpdateGames() error {
 // GetLeagues gets the first 100 leagues from the Pandascore API.
 // @returns an error if one occurred.
 func (client *PandaClient) GetLeagues() error {
-	client.logger.Info("Getting leagues")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
-	resp, err := client.MakeRequest([]string{"leagues"}, keys)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		client.logger.Error("Error making request to Pandascore API")
-		return err
-	}
-	defer resp.Body.Close()
+	for i := range 15 {
+		client.logger.Info("Getting leagues page " + strconv.Itoa(i))
+		keys["page"] = strconv.Itoa(i)
+		resp, err := client.MakeRequest([]string{"leagues"}, keys)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			client.logger.Error("Error making request to Pandascore API")
+			return err
+		}
+		defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	var result pandatypes.LeagueLikes
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return err
-	}
-	for _, league := range result {
-		client.logger.Infof("Writing league %s", league.Name)
-		err = league.ToRow().WriteToDB(client.dbConnector)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
+		}
+
+		var result pandatypes.LeagueLikes
+		err = json.Unmarshal(body, &result)
+		if err != nil {
+			return err
+		}
+		for _, league := range result {
+			client.logger.Infof("Writing league %s", league.Name)
+			err = league.ToRow().WriteToDB(client.dbConnector)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

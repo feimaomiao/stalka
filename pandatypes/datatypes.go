@@ -355,57 +355,61 @@ type ResultMatchLikes struct {
 
 type GameRow struct {
 	ID   int
-	Name string
 	Slug string
+	Name string
 }
 
 func (game GameLike) ToRow() RowLike {
 	return GameRow{
 		ID:   game.ID,
-		Name: game.Name,
 		Slug: game.Slug,
+		Name: game.Name,
 	}
 }
 
 func (row GameRow) WriteToDB(db *sql.DB) error {
 	_, err := db.Exec(
-		"INSERT INTO games (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING;",
+		"INSERT INTO games (id, slug, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
-		row.Name,
 		row.Slug,
+		row.Name,
 	)
 	return err
 }
 
 type LeagueRow struct {
 	ID        int
+	Slug      string
 	GameID    int
 	Name      string
-	imageLink string
+	ImageLink string
 }
 
 func (league LeagueLike) ToRow() RowLike {
 	return LeagueRow{
 		ID:        league.ID,
+		Slug:      league.Slug,
 		GameID:    league.Videogame.ID,
 		Name:      league.Name,
-		imageLink: league.ImageURL,
+		ImageLink: league.ImageURL,
 	}
 }
 
 func (row LeagueRow) WriteToDB(db *sql.DB) error {
 	_, err := db.Exec(
-		"INSERT INTO leagues (id, game_id, name, image_link) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING;",
+		"INSERT INTO leagues (id,slug, game_id, name, image_link) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
+		row.Slug,
 		row.GameID,
 		row.Name,
-		row.imageLink,
+		row.ImageLink,
 	)
 	return err
 }
 
 type SeriesRow struct {
 	ID       int
+	Slug     string
 	GameID   int
 	LeagueID int
 	Name     string
@@ -414,6 +418,7 @@ type SeriesRow struct {
 func (series SeriesLike) ToRow() RowLike {
 	return SeriesRow{
 		ID:       series.ID,
+		Slug:     series.Slug,
 		GameID:   series.Videogame.ID,
 		LeagueID: series.League.ID,
 		Name:     series.Name,
@@ -422,8 +427,9 @@ func (series SeriesLike) ToRow() RowLike {
 
 func (row SeriesRow) WriteToDB(db *sql.DB) error {
 	_, err := db.Exec(
-		"INSERT INTO series (id, game_id, league_id, name) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING;",
+		"INSERT INTO series (id,slug, game_id, league_id, name) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
+		row.Slug,
 		row.GameID,
 		row.LeagueID,
 		row.Name,
@@ -433,29 +439,50 @@ func (row SeriesRow) WriteToDB(db *sql.DB) error {
 
 type TournamentRow struct {
 	ID       int
+	Slug     string
 	GameID   int
 	SerieID  int
 	LeagueID int
+	Tier     int
 	Name     string
 }
 
-func (series TournamentLike) ToRow() RowLike {
+func (tournament TournamentLike) ToRow() RowLike {
+	var tier int
+	switch tournament.Tier {
+	case "S":
+		tier = 1
+	case "A":
+		tier = 2
+	case "B":
+		tier = 3
+	case "C":
+		tier = 4
+	case "D":
+		tier = 5
+	default:
+		tier = 6
+	}
 	return TournamentRow{
-		ID:       series.ID,
-		GameID:   series.Videogame.ID,
-		SerieID:  series.Serie.ID,
-		LeagueID: series.League.ID,
-		Name:     series.Name,
+		ID:       tournament.ID,
+		Slug:     tournament.Slug,
+		GameID:   tournament.Videogame.ID,
+		SerieID:  tournament.Serie.ID,
+		LeagueID: tournament.League.ID,
+		Tier:     tier,
+		Name:     tournament.Name,
 	}
 }
 
 func (row TournamentRow) WriteToDB(db *sql.DB) error {
 	_, err := db.Exec(
-		"INSERT INTO tournaments (id, game_id, serie_id, league_id, name) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
+		"INSERT INTO tournaments (id, slug, game_id, serie_id, league_id, tier, name) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
+		row.Slug,
 		row.GameID,
 		row.SerieID,
 		row.LeagueID,
+		row.Tier,
 		row.Name,
 	)
 	return err
@@ -463,6 +490,7 @@ func (row TournamentRow) WriteToDB(db *sql.DB) error {
 
 type MatchRow struct {
 	ID                int
+	Slug              string
 	Finished          bool
 	GameID            int
 	LeagueID          int
@@ -495,6 +523,7 @@ func (match MatchLike) ToRow() RowLike {
 	}
 	return MatchRow{
 		ID:                match.ID,
+		Slug:              match.Slug,
 		Finished:          match.EndAt != time.Time{},
 		GameID:            match.Videogame.ID,
 		LeagueID:          match.League.ID,
@@ -513,8 +542,9 @@ func (match MatchLike) ToRow() RowLike {
 
 func (row MatchRow) WriteToDB(db *sql.DB) error {
 	_, err := db.Exec(
-		"INSERT INTO matches (id, finished,game_id, league_id, series_id, tournament_id, Team1_id, Team1_score, Team2_id, Team2_score, name, expected_start_time, amount_of_games, actual_game_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) ON CONFLICT (id) DO NOTHING;",
+		"INSERT INTO matches (id,slug, finished,game_id, league_id, series_id, tournament_id, Team1_id, Team1_score, Team2_id, Team2_score, name, expected_start_time, amount_of_games, actual_game_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
+		row.Slug,
 		row.Finished,
 		row.GameID,
 		row.LeagueID,
@@ -543,12 +573,12 @@ type TeamRow struct {
 
 func (row TeamRow) WriteToDB(db *sql.DB) error {
 	_, err := db.Exec(
-		"INSERT INTO teams (id, game_id, name, acronym, slug, image_link) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING;",
+		"INSERT INTO teams (id,slug, game_id, name, acronym, image_link) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
+		row.Slug,
 		row.GameID,
 		row.Name,
 		row.Acronym,
-		row.Slug,
 		row.ImageLink,
 	)
 	return err
