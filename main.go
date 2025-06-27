@@ -31,7 +31,7 @@ func main() {
 	go func() {
 		for range matchTicker.C {
 			sugar.Info("Matchticker fired")
-			err = client.GetMatches()
+			err = client.GetMatches(false)
 			if err != nil {
 				sugar.Fatal(err)
 			}
@@ -45,15 +45,19 @@ func main() {
 			if err != nil {
 				sugar.Fatal(err)
 			}
-			err = client.GetLeagues()
+			err = client.GetLeagues(false)
 			if err != nil {
 				sugar.Fatal(err)
 			}
-			err = client.GetSeries()
+			err = client.GetSeries(false)
 			if err != nil {
 				sugar.Fatal(err)
 			}
-			err = client.GetTournaments()
+			err = client.GetTeams(false)
+			if err != nil {
+				sugar.Fatal(err)
+			}
+			err = client.GetTournaments(false)
 			if err != nil {
 				sugar.Fatal(err)
 			}

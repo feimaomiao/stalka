@@ -339,6 +339,22 @@ type MatchLike struct {
 	} `json:"winner"`
 }
 
+type TeamLike struct {
+	ID               int       `json:"id"`
+	Name             string    `json:"name"`
+	Location         any       `json:"location"`
+	Players          []any     `json:"players"`
+	Slug             string    `json:"slug"`
+	ModifiedAt       time.Time `json:"modified_at"`
+	Acronym          string    `json:"acronym"`
+	ImageURL         string    `json:"image_url"`
+	CurrentVideogame struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	} `json:"current_videogame"`
+}
+
 type GameLikes []GameLike
 
 type LeagueLikes []LeagueLike
@@ -348,6 +364,8 @@ type SeriesLikes []SeriesLike
 type TournamentLikes []TournamentLike
 
 type MatchLikes []MatchLike
+
+type TeamLikes []TeamLike
 type ResultMatchLikes struct {
 	Matches MatchLikes
 	Err     error
@@ -450,15 +468,15 @@ type TournamentRow struct {
 func (tournament TournamentLike) ToRow() RowLike {
 	var tier int
 	switch tournament.Tier {
-	case "S":
+	case "S", "s":
 		tier = 1
-	case "A":
+	case "A", "a":
 		tier = 2
-	case "B":
+	case "B", "b":
 		tier = 3
-	case "C":
+	case "C", "c":
 		tier = 4
-	case "D":
+	case "D", "d":
 		tier = 5
 	default:
 		tier = 6
@@ -569,6 +587,17 @@ type TeamRow struct {
 	Acronym   string
 	Slug      string
 	ImageLink string
+}
+
+func (team TeamLike) ToRow() RowLike {
+	return TeamRow{
+		ID:        team.ID,
+		GameID:    team.CurrentVideogame.ID,
+		Name:      team.Name,
+		Acronym:   team.Acronym,
+		Slug:      team.Slug,
+		ImageLink: team.ImageURL,
+	}
 }
 
 func (row TeamRow) WriteToDB(db *sql.DB) error {

@@ -63,19 +63,23 @@ func (client *PandaClient) Startup() error {
 	if err != nil {
 		return err
 	}
-	err = client.GetLeagues()
+	err = client.GetLeagues(true)
 	if err != nil {
 		return err
 	}
-	err = client.GetSeries()
+	err = client.GetSeries(true)
 	if err != nil {
 		return err
 	}
-	err = client.GetTournaments()
+	err = client.GetTournaments(true)
 	if err != nil {
 		return err
 	}
-	err = client.GetMatches()
+	err = client.GetTeams(true)
+	if err != nil {
+		return err
+	}
+	err = client.GetMatches(true)
 	if err != nil {
 		return err
 	}
