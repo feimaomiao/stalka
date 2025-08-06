@@ -1,6 +1,7 @@
 package pandatypes
 
 import (
+	"context"
 	"database/sql"
 	"time"
 )
@@ -14,7 +15,7 @@ type PandaDataLike interface {
 }
 
 type RowLike interface {
-	WriteToDB(db *sql.DB) error
+	WriteToDB(ctx context.Context, db *sql.DB) error
 }
 
 type GameLike struct {
@@ -385,8 +386,9 @@ func (game GameLike) ToRow() RowLike {
 	}
 }
 
-func (row GameRow) WriteToDB(db *sql.DB) error {
-	_, err := db.Exec(
+func (row GameRow) WriteToDB(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(
+		ctx,
 		"INSERT INTO games (id, slug, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
 		row.Slug,
@@ -413,8 +415,9 @@ func (league LeagueLike) ToRow() RowLike {
 	}
 }
 
-func (row LeagueRow) WriteToDB(db *sql.DB) error {
-	_, err := db.Exec(
+func (row LeagueRow) WriteToDB(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(
+		ctx,
 		"INSERT INTO leagues (id,slug, game_id, name, image_link) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
 		row.Slug,
@@ -443,8 +446,9 @@ func (series SeriesLike) ToRow() RowLike {
 	}
 }
 
-func (row SeriesRow) WriteToDB(db *sql.DB) error {
-	_, err := db.Exec(
+func (row SeriesRow) WriteToDB(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(
+		ctx,
 		"INSERT INTO series (id,slug, game_id, league_id, name) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
 		row.Slug,
@@ -492,8 +496,9 @@ func (tournament TournamentLike) ToRow() RowLike {
 	}
 }
 
-func (row TournamentRow) WriteToDB(db *sql.DB) error {
-	_, err := db.Exec(
+func (row TournamentRow) WriteToDB(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(
+		ctx,
 		"INSERT INTO tournaments (id, slug, game_id, serie_id, league_id, tier, name) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
 		row.Slug,
@@ -558,8 +563,9 @@ func (match MatchLike) ToRow() RowLike {
 	}
 }
 
-func (row MatchRow) WriteToDB(db *sql.DB) error {
-	_, err := db.Exec(
+func (row MatchRow) WriteToDB(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(
+		ctx,
 		"INSERT INTO matches (id,slug, finished,game_id, league_id, series_id, tournament_id, Team1_id, Team1_score, Team2_id, Team2_score, name, expected_start_time, amount_of_games, actual_game_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
 		row.Slug,
@@ -600,8 +606,9 @@ func (team TeamLike) ToRow() RowLike {
 	}
 }
 
-func (row TeamRow) WriteToDB(db *sql.DB) error {
-	_, err := db.Exec(
+func (row TeamRow) WriteToDB(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(
+		ctx,
 		"INSERT INTO teams (id,slug, game_id, name, acronym, image_link) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING;",
 		row.ID,
 		row.Slug,

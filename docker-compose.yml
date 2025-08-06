@@ -1,6 +1,6 @@
 services:
-  db:
-    image: postgres
+  postgres:
+    image: postgres:17
     restart: always
     ports:
       - "5432:5432"
@@ -9,7 +9,25 @@ services:
       POSTGRES_PASSWORD: ${postgres_password}
       POSTGRES_DB: esports
       READER_PASSWORD: ${reader_password}
+    user: ${postgres_user}
     volumes:
         - ./data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U ${postgres_user}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  stalka: 
+    build: .
+    depends_on:
+      postgres: 
+        condition: service_healthy
+    environment:
+      pandascore_secret: ${pandascore_secret}
+      lol_writer_password: ${lol_writer_password}
+      postgres_user: ${postgres_user}
+      postgres_password: ${postgres_password}
+      reader_password: ${reader_password}
+      writer_password: ${writer_password}
 volumes:
   postgresql_data:

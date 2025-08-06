@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -132,7 +133,7 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 		client.logger.Error("Error parsing response: %v", err)
 	}
 
-	err = result.ToRow().WriteToDB(client.dbConnector)
+	err = result.ToRow().WriteToDB(client.ctx, client.dbConnector)
 	if err != nil {
 		return err
 	}
@@ -155,7 +156,7 @@ func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 			client.logger.Errorf("Error converting match row to match row (??), %v", row)
 			continue
 		}
-		err = row.WriteToDB(client.dbConnector)
+		err = row.WriteToDB(client.ctx, client.dbConnector)
 		if err != nil {
 			client.logger.Error(err)
 			continue
@@ -174,7 +175,7 @@ func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 		return
 	}
 	for _, opponent := range match.Opponents {
-		exists, err := TeamExists(client.dbConnector, opponent.Opponent.ID)
+		exists, err := TeamExists(client.ctx, client.dbConnector, opponent.Opponent.ID)
 		if err != nil {
 			client.logger.Error(err)
 			continue
@@ -188,7 +189,7 @@ func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 				Acronym:   opponent.Opponent.Acronym,
 				Slug:      opponent.Opponent.Slug,
 				ImageLink: opponent.Opponent.ImageURL,
-			}.WriteToDB(client.dbConnector)
+			}.WriteToDB(client.ctx, client.dbConnector)
 			if err != nil {
 				client.logger.Error(err)
 				continue
@@ -203,9 +204,9 @@ func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 // @param db - the database connection
 // @param teamID - the ID of the team to check
 // @returns true if the team exists, false otherwise, and an error if one occurred.
-func TeamExists(db *sql.DB, teamID int) (bool, error) {
+func TeamExists(ctx context.Context, db *sql.DB, teamID int) (bool, error) {
 	var id int
-	err := db.QueryRow("SELECT id FROM teams WHERE id = $1", teamID).Scan(&id)
+	err := db.QueryRowContext(ctx, "SELECT id FROM teams WHERE id = $1", teamID).Scan(&id)
 	if err != nil && err != sql.ErrNoRows {
 		return false, err
 	}
@@ -236,7 +237,7 @@ func (client *PandaClient) ExistCheck(id int, flag GetChoice) error {
 		client.logger.Error("Invalid flag")
 		return fmt.Errorf("invalid flag: %d", flag)
 	}
-	err := client.dbConnector.QueryRow(dbString, id).Scan(&id)
+	err := client.dbConnector.QueryRowContext(client.ctx, dbString, id).Scan(&id)
 	// we ignore the error if it is sql.ErrNoRows
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err

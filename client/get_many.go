@@ -42,7 +42,7 @@ func (client *PandaClient) UpdateGames() error {
 	}
 	for _, game := range result {
 		client.logger.Debugf("Writing game %s", game.Name)
-		err = game.ToRow().WriteToDB(client.dbConnector)
+		err = game.ToRow().WriteToDB(client.ctx, client.dbConnector)
 		if err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ func (client *PandaClient) GetLeagues(setup bool) error {
 		}
 		for _, league := range result {
 			client.logger.Debugf("Writing league %s", league.Name)
-			err = league.ToRow().WriteToDB(client.dbConnector)
+			err = league.ToRow().WriteToDB(client.ctx, client.dbConnector)
 			if err != nil {
 				return err
 			}
@@ -124,7 +124,7 @@ func (client *PandaClient) GetSeries(setup bool) error {
 				continue
 			}
 			client.logger.Debugf("Writing series %s, with league_id %d", series.Name, series.LeagueID)
-			err = series.ToRow().WriteToDB(client.dbConnector)
+			err = series.ToRow().WriteToDB(client.ctx, client.dbConnector)
 			if err != nil {
 				return err
 			}
@@ -170,7 +170,7 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 				continue
 			}
 			client.logger.Debugf("Writing tournament %s", tournament.Name)
-			err = tournament.ToRow().WriteToDB(client.dbConnector)
+			err = tournament.ToRow().WriteToDB(client.ctx, client.dbConnector)
 			if err != nil {
 				return err
 			}
@@ -278,7 +278,7 @@ func (client *PandaClient) GetTeams(setup bool) error {
 		}
 		for _, teams := range result {
 			client.logger.Debugf("Writing team %s in game %d", teams.Name, teams.CurrentVideogame.ID)
-			err = teams.ToRow().WriteToDB(client.dbConnector)
+			err = teams.ToRow().WriteToDB(client.ctx, client.dbConnector)
 			if err != nil {
 				client.logger.Error("Error writing team to database: %v", err)
 				return err

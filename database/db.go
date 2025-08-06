@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -13,16 +14,17 @@ import (
 )
 
 func Init(log *zap.SugaredLogger) error {
-	connStr := fmt.Sprintf("host=localhost port=5432 user=%s password=%s dbname=esports sslmode=disable",
+	connStr := fmt.Sprintf("host=postgres port=5432 user=%s password=%s dbname=esports sslmode=disable",
 		os.Getenv("postgres_user"),
 		os.Getenv("postgres_password"))
+	log.Info("Connecting to database with connection string: ", connStr)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		log.Error(err)
+		log.Error(err, "Failed to connect to database")
 		return err
 	}
 	defer db.Close()
-	err = db.Ping()
+	err = db.PingContext(context.Background())
 	if err != nil {
 		log.Error(err)
 		return err
@@ -44,7 +46,10 @@ func Init(log *zap.SugaredLogger) error {
 	}
 	sqlCommand := string(data)
 
-	_, err = db.Exec(fmt.Sprintf(sqlCommand, os.Getenv("reader_password"), os.Getenv("writer_password")))
+	_, err = db.ExecContext(
+		context.Background(),
+		fmt.Sprintf(sqlCommand, os.Getenv("reader_password"), os.Getenv("writer_password")),
+	)
 	log.Info("Ran initial setup")
 	if err != nil {
 		log.Error(err)
@@ -56,7 +61,7 @@ func Init(log *zap.SugaredLogger) error {
 func Connect(user string, password string) (*sql.DB, error) {
 	// Connect to the database
 	connStr := fmt.Sprintf(
-		"host=localhost port=5432 user=%s password=%s dbname=esports sslmode=disable",
+		"host=postgres port=5432 user=%s password=%s dbname=esports sslmode=disable",
 		user,
 		password,
 	)
