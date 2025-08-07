@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"strconv"
 
 	pandatypes "github.com/feimaomiao/stalka/pandatypes"
+	"github.com/jackc/pgx/v5"
 )
 
 // converts the flag to a pandaapi recognized string.
@@ -204,10 +204,10 @@ func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 // @param db - the database connection
 // @param teamID - the ID of the team to check
 // @returns true if the team exists, false otherwise, and an error if one occurred.
-func TeamExists(ctx context.Context, db *sql.DB, teamID int) (bool, error) {
+func TeamExists(ctx context.Context, db *pgx.Conn, teamID int) (bool, error) {
 	var id int
-	err := db.QueryRowContext(ctx, "SELECT id FROM teams WHERE id = $1", teamID).Scan(&id)
-	if err != nil && err != sql.ErrNoRows {
+	err := db.QueryRow(ctx, "SELECT id FROM teams WHERE id = $1", teamID).Scan(&id)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return false, err
 	}
 	return id != 0, nil
@@ -237,12 +237,13 @@ func (client *PandaClient) ExistCheck(id int, flag GetChoice) error {
 		client.logger.Error("Invalid flag")
 		return fmt.Errorf("invalid flag: %d", flag)
 	}
-	err := client.dbConnector.QueryRowContext(client.ctx, dbString, id).Scan(&id)
-	// we ignore the error if it is sql.ErrNoRows
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	err := client.dbConnector.QueryRow(client.ctx, dbString, id).Scan(&id)
+	// we ignore the error if row doesn't exist
+
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	if id == 0 || errors.Is(err, sql.ErrNoRows) {
+	if id == 0 || errors.Is(err, pgx.ErrNoRows) {
 		client.logger.Infof("%d %d currently does not exist", flag, id)
 		err = client.GetOne(id, flag)
 		if err != nil {
