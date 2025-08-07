@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
-	pandatypes "github.com/feimaomiao/stalka/pandatypes"
+	pandatypes "github.com/feimaomiao/stalka/pandatypes_old"
 	"github.com/jackc/pgx/v5"
 )
 

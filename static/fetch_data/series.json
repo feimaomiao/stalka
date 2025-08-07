@@ -1,0 +1,70 @@
+{
+    "id": 346,
+    "name": "",
+    "year": 2016,
+    "slug": "league-of-legends-international-wildcard-msi-qualifier-2016",
+    "begin_at": "2013-04-16T00:00:00Z",
+    "end_at": "2013-04-23T00:00:00Z",
+    "winner_id": 202,
+    "winner_type": "Team",
+    "videogame": {
+        "id": 1,
+        "name": "LoL",
+        "slug": "league-of-legends"
+    },
+    "modified_at": "2016-04-13T15:56:59Z",
+    "league_id": 299,
+    "tournaments": [
+        {
+            "id": 287,
+            "name": "Round robin",
+            "type": null,
+            "country": null,
+            "slug": "league-of-legends-international-wildcard-iwci-2016-2016-round-robin",
+            "begin_at": "2013-04-16T00:00:00Z",
+            "detailed_stats": true,
+            "end_at": "2013-04-23T00:00:00Z",
+            "winner_id": null,
+            "winner_type": "Team",
+            "serie_id": 346,
+            "modified_at": "2020-06-17T06:24:48Z",
+            "league_id": 299,
+            "prizepool": null,
+            "tier": null,
+            "has_bracket": false,
+            "region": null,
+            "live_supported": false
+        },
+        {
+            "id": 288,
+            "name": "Playoffs",
+            "type": null,
+            "country": null,
+            "slug": "league-of-legends-international-wildcard-iwci-2016-2016-playoffs",
+            "begin_at": "2013-04-16T00:00:00Z",
+            "detailed_stats": true,
+            "end_at": "2013-04-23T00:00:00Z",
+            "winner_id": 202,
+            "winner_type": "Team",
+            "serie_id": 346,
+            "modified_at": "2019-07-08T18:13:59Z",
+            "league_id": 299,
+            "prizepool": null,
+            "tier": null,
+            "has_bracket": true,
+            "region": null,
+            "live_supported": false
+        }
+    ],
+    "league": {
+        "id": 299,
+        "name": "International Wildcard",
+        "url": "http://www.lolesports.com/en_US/iwc/",
+        "slug": "league-of-legends-international-wildcard",
+        "modified_at": "2019-02-20T13:08:26Z",
+        "image_url": "https://cdn.pandascore.co/images/league/image/299/CwXOhtN.png"
+    },
+    "season": "MSI Qualifier",
+    "videogame_title": null,
+    "full_name": "MSI Qualifier 2016"
+}

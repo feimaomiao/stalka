@@ -8,7 +8,7 @@ import (
 
 	"encoding/json"
 
-	pandatypes "github.com/feimaomiao/stalka/pandatypes"
+	pandatypes "github.com/feimaomiao/stalka/pandatypes_old"
 	// loads .env file automatically.
 	_ "github.com/joho/godotenv/autoload"
 )

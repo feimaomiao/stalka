@@ -1,0 +1,164 @@
+{
+    "original_scheduled_at": "2014-06-01T14:00:00Z",
+    "games": [
+        {
+            "complete": false,
+            "id": 169697,
+            "position": 1,
+            "status": "finished",
+            "length": 3307,
+            "finished": true,
+            "match_id": 21655,
+            "begin_at": "2014-06-01T14:00:00Z",
+            "detailed_stats": true,
+            "end_at": "2014-06-01T14:55:07Z",
+            "forfeit": false,
+            "winner_type": "Team",
+            "winner": {
+                "id": 1575,
+                "type": "Team"
+            }
+        },
+        {
+            "complete": false,
+            "id": 169698,
+            "position": 2,
+            "status": "finished",
+            "length": 2119,
+            "finished": true,
+            "match_id": 21655,
+            "begin_at": "2014-06-01T15:00:00Z",
+            "detailed_stats": true,
+            "end_at": "2014-06-01T15:35:19Z",
+            "forfeit": false,
+            "winner_type": "Team",
+            "winner": {
+                "id": 1575,
+                "type": "Team"
+            }
+        }
+    ],
+    "league": {
+        "id": 291,
+        "name": "NA Challenger Series",
+        "url": "http://www.lolesports.com/en_US/na-cs",
+        "slug": "league-of-legends-na-challenger-series",
+        "modified_at": "2019-03-05T19:00:14Z",
+        "image_url": "https://cdn.pandascore.co/images/league/image/291/CS_NA_logo_re-up.png"
+    },
+    "opponents": [
+        {
+            "type": "Team",
+            "opponent": {
+                "id": 1575,
+                "name": "Team LoLPro",
+                "location": null,
+                "slug": "team-lolpro",
+                "modified_at": "2021-07-27T15:31:02Z",
+                "acronym": "LoLPro",
+                "image_url": "https://cdn.pandascore.co/images/team/image/1575/300px-Team_LoLPro.png"
+            }
+        },
+        {
+            "type": "Team",
+            "opponent": {
+                "id": 1573,
+                "name": "Area of Effect eSports",
+                "location": "US",
+                "slug": "area-of-effect-esports",
+                "modified_at": "2024-08-19T11:35:50Z",
+                "acronym": "AOE",
+                "image_url": "https://cdn.pandascore.co/images/team/image/1573/ezgif_5_9f5a9456a7.png"
+            }
+        }
+    ],
+    "league_id": 291,
+    "results": [
+        {
+            "team_id": 1575,
+            "score": 2
+        },
+        {
+            "team_id": 1573,
+            "score": 0
+        }
+    ],
+    "modified_at": "2020-02-24T11:24:06Z",
+    "draw": false,
+    "tournament_id": 696,
+    "game_advantage": null,
+    "end_at": "2014-06-01T15:35:19Z",
+    "slug": "team-lolpro-vs-area-of-effect-esports-2014-06-01",
+    "match_type": "best_of",
+    "serie_id": 1352,
+    "videogame_title": null,
+    "videogame_version": {
+        "name": "4.7.16",
+        "current": false
+    },
+    "number_of_games": 3,
+    "winner_type": "Team",
+    "serie": {
+        "id": 1352,
+        "name": null,
+        "year": 2014,
+        "slug": "league-of-legends-na-challenger-series-summer-2014",
+        "begin_at": "2014-05-17T00:00:00Z",
+        "end_at": "2014-08-24T00:00:00Z",
+        "winner_id": 6,
+        "winner_type": "Team",
+        "modified_at": "2022-08-08T15:44:00Z",
+        "league_id": 291,
+        "season": "Summer",
+        "full_name": "Summer 2014"
+    },
+    "status": "finished",
+    "winner": {
+        "id": 1575,
+        "name": "Team LoLPro",
+        "location": null,
+        "slug": "team-lolpro",
+        "modified_at": "2021-07-27T15:31:02Z",
+        "acronym": "LoLPro",
+        "image_url": "https://cdn.pandascore.co/images/team/image/1575/300px-Team_LoLPro.png"
+    },
+    "rescheduled": false,
+    "detailed_stats": true,
+    "id": 21655,
+    "name": "Qf 2",
+    "winner_id": 1575,
+    "scheduled_at": "2014-06-01T14:00:00Z",
+    "begin_at": "2014-06-01T14:00:00Z",
+    "forfeit": false,
+    "tournament": {
+        "id": 696,
+        "name": "Regular Season: Bracket 1",
+        "type": null,
+        "country": null,
+        "slug": "league-of-legends-na-challenger-series-summer-2014-regular-season",
+        "begin_at": "2014-05-31T14:00:00Z",
+        "detailed_stats": true,
+        "end_at": "2014-06-22T06:00:00Z",
+        "winner_id": 85,
+        "winner_type": "Team",
+        "serie_id": 1352,
+        "modified_at": "2023-02-14T14:47:36Z",
+        "league_id": 291,
+        "prizepool": "20000 United States Dollar",
+        "tier": "d",
+        "has_bracket": false,
+        "region": null,
+        "live_supported": false
+    },
+    "live": {
+        "supported": false,
+        "url": null,
+        "opens_at": null
+    },
+    "videogame": {
+        "id": 1,
+        "name": "LoL",
+        "slug": "league-of-legends"
+    },
+    "streams_list": []
+}
