@@ -2,13 +2,14 @@ package client
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"net/url"
 	"os"
 
 	"github.com/feimaomiao/stalka/database"
 	"go.uber.org/zap"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type GetChoice int
@@ -27,7 +28,7 @@ type PandaClient struct {
 	pandasecret string
 	logger      *zap.SugaredLogger
 	httpClient  *http.Client
-	dbConnector *sql.DB
+	dbConnector *pgx.Conn
 	run         int
 	ctx         context.Context
 }

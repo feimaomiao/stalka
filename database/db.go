@@ -2,29 +2,31 @@ package database
 
 import (
 	"context"
-	"database/sql"
+
 	"fmt"
 	"io"
 	"os"
 
 	// loads .env file automatically.
 	_ "github.com/joho/godotenv/autoload"
-	_ "github.com/lib/pq"
 	"go.uber.org/zap"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func Init(log *zap.SugaredLogger) error {
+	ctx := context.Background()
 	connStr := fmt.Sprintf("host=postgres port=5432 user=%s password=%s dbname=esports sslmode=disable",
 		os.Getenv("postgres_user"),
 		os.Getenv("postgres_password"))
 	log.Info("Connecting to database with connection string: ", connStr)
-	db, err := sql.Open("postgres", connStr)
+	db, err := pgx.Connect(ctx, connStr)
 	if err != nil {
 		log.Error(err, "Failed to connect to database")
 		return err
 	}
-	defer db.Close()
-	err = db.PingContext(context.Background())
+	defer db.Close(ctx)
+	err = db.Ping(context.Background())
 	if err != nil {
 		log.Error(err)
 		return err
@@ -32,6 +34,7 @@ func Init(log *zap.SugaredLogger) error {
 	log.Info("Connected to database")
 	log.Info("Running initial setup")
 	// open the file static/init.sql
+	// This is to be changed in the next branch
 	file, err := os.Open("static/init.sql")
 	if err != nil {
 		log.Error(err)
@@ -46,7 +49,7 @@ func Init(log *zap.SugaredLogger) error {
 	}
 	sqlCommand := string(data)
 
-	_, err = db.ExecContext(
+	_, err = db.Exec(
 		context.Background(),
 		fmt.Sprintf(sqlCommand, os.Getenv("reader_password"), os.Getenv("writer_password")),
 	)
@@ -58,14 +61,14 @@ func Init(log *zap.SugaredLogger) error {
 	return nil
 }
 
-func Connect(user string, password string) (*sql.DB, error) {
+func Connect(user string, password string) (*pgx.Conn, error) {
 	// Connect to the database
 	connStr := fmt.Sprintf(
 		"host=postgres port=5432 user=%s password=%s dbname=esports sslmode=disable",
 		user,
 		password,
 	)
-	db, err := sql.Open("postgres", connStr)
+	db, err := pgx.Connect(context.Background(), connStr)
 	if err != nil {
 		return nil, err
 	}
