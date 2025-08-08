@@ -70,6 +70,8 @@ writer_password=your_database_password
 - **Regular Updates**: 20 pages per entity type
 - **Setup Mode**: 60 pages for comprehensive initial data
 
+We note that pandaAPI has a 1k/hour limit, and this should not be reached under any circumstance.
+
 ## API Data Sources
 
 The service fetches data from the following PandaScore API endpoints:
@@ -107,13 +109,6 @@ The service uses structured logging with different levels:
 - **Error**: Error conditions and failures
 - **Fatal**: Critical errors that terminate the service
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## License
 
