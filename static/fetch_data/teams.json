@@ -1,0 +1,15 @@
+{
+    "id": 127652,
+    "name": "Ares Gaming",
+    "location": null,
+    "players": [],
+    "slug": "ares-gaming",
+    "modified_at": "2020-07-31T11:17:12Z",
+    "acronym": "",
+    "image_url": "https://cdn.pandascore.co/images/team/image/127652/175px_ares_gaming_logo.png",
+    "current_videogame": {
+        "id": 4,
+        "name": "Dota 2",
+        "slug": "dota-2"
+    }
+}

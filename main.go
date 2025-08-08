@@ -1,21 +1,86 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/feimaomiao/stalka/client"
-	"github.com/feimaomiao/stalka/database"
+	"github.com/feimaomiao/stalka/dbtypes"
+	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
+
+	_ "embed"
 )
 
+//go:embed static/schema.sql
+var schema string
+
+// DatabaseConnector is a struct that holds the database connection and the dbtypes.Queries object.
+// It is used to interact with the database.
+// @param Db - the database connection.
+// @param DbConn - the queries object interacting with the database (sqlc).
+type DatabaseConnector struct {
+	DB     *pgx.Conn
+	DBConn *dbtypes.Queries
+}
+
+// Init initializes the database connection and returns a DatabaseConnector.
+// It reads the connection parameters from environment variables.
+// @param ctx - the context to use for the database connection.
+// @param log - the logger to use for logging.
+// @returns a DatabaseConnector and an error if one occurred.
+func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error) {
+	connStr := fmt.Sprintf("host=postgres port=5432 user=%s password=%s dbname=esports sslmode=disable",
+		os.Getenv("postgres_user"),
+		os.Getenv("postgres_password"))
+	log.Info("Connecting to database with connection string: ", connStr)
+	db, err := pgx.Connect(ctx, connStr)
+	if err != nil {
+		log.Error(err, "Failed to connect to database")
+		return DatabaseConnector{}, err
+	}
+	err = db.Ping(context.Background())
+	if err != nil {
+		log.Error(err)
+		return DatabaseConnector{}, err
+	}
+	log.Info("Connected to database, running migrations")
+	_, err = db.Exec(ctx, schema)
+	if err != nil {
+		log.Error(err, "Failed to run migrations")
+		return DatabaseConnector{}, err
+	}
+	log.Info("Migrations completed successfully")
+	dbConn := dbtypes.New(db)
+	return DatabaseConnector{
+		DB:     db,
+		DBConn: dbConn,
+	}, nil
+}
+
 func main() {
+	ctx := context.Background()
 	logger, _ := zap.NewDevelopment()
 	sugar := logger.Sugar()
-	err := database.Init(sugar)
+	database, err := Init(ctx, sugar)
 	if err != nil {
 		sugar.Fatal(err)
 	}
-	client, err := client.NewPandaClient(sugar)
+	defer database.DB.Close(ctx)
+
+	// Initialize the PandaClient with the database connector and logger.
+	// The PandaClient will be used to make requests to the Pandascore API.
+	client := client.PandaClient{
+		Pandasecret: os.Getenv("pandascore_secret"),
+		Logger:      sugar,
+		HTTPClient:  &http.Client{},
+		DBConnector: database.DBConn,
+		Run:         0,
+		Ctx:         ctx,
+	}
 	if err != nil {
 		sugar.Fatal(err)
 	}

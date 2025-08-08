@@ -1,7 +1,6 @@
 package client
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
-	pandatypes "github.com/feimaomiao/stalka/pandatypes"
+	"github.com/feimaomiao/stalka/pandatypes"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -41,63 +40,132 @@ func flagToString(flag GetChoice) (string, error) {
 // @param flag - the type of entity to parse.
 // @returns the parsed entity and an error if one occurred.
 func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (pandatypes.PandaDataLike, error) {
+	result, err := client.unmarshalByFlag(body, flag)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = client.ensureDependencies(result, flag); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// unmarshalByFlag unmarshals the body into the appropriate type based on flag.
+func (client *PandaClient) unmarshalByFlag(body []byte, flag GetChoice) (pandatypes.PandaDataLike, error) {
+	var result pandatypes.PandaDataLike
+	var err error
+
 	switch flag {
 	case FlagGame:
-		var result pandatypes.GameLike
-		err := json.Unmarshal(body, &result)
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
+		var r pandatypes.GameLike
+		err = json.Unmarshal(body, &r)
+		result = r
 	case FlagLeague:
-		var result pandatypes.LeagueLike
-		err := json.Unmarshal(body, &result)
-		if err != nil {
-			return nil, err
-		}
-		err = client.ExistCheck(result.Videogame.ID, FlagGame)
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
+		var r pandatypes.LeagueLike
+		err = json.Unmarshal(body, &r)
+		result = r
 	case FlagSeries:
-		var result pandatypes.SeriesLike
-		err := json.Unmarshal(body, &result)
-		if err != nil {
-			return nil, err
-		}
-		err = client.ExistCheck(result.LeagueID, FlagLeague)
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
+		var r pandatypes.SeriesLike
+		err = json.Unmarshal(body, &r)
+		result = r
 	case FlagTournament:
-		var result pandatypes.TournamentLike
-		err := json.Unmarshal(body, &result)
-		if err != nil {
-			return nil, err
-		}
-		err = client.ExistCheck(result.SerieID, FlagSeries)
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
+		var r pandatypes.TournamentLike
+		err = json.Unmarshal(body, &r)
+		result = r
 	case FlagMatch:
-		var result pandatypes.MatchLike
-		err := json.Unmarshal(body, &result)
-		if err != nil {
-			return nil, err
-		}
-		err = client.ExistCheck(result.TournamentID, FlagTournament)
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
+		var r pandatypes.MatchLike
+		err = json.Unmarshal(body, &r)
+		result = r
 	case FlagTeam:
-		return nil, errors.New("should not call getone on team")
+		var r pandatypes.TeamLike
+		err = json.Unmarshal(body, &r)
+		result = r
 	default:
 		return nil, fmt.Errorf("invalid flag: %d", flag)
 	}
+
+	if err != nil {
+		client.Logger.Errorf("Error unmarshalling response: %v", err)
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// ensureDependencies checks and creates dependencies for the parsed entity.
+func (client *PandaClient) ensureDependencies(result pandatypes.PandaDataLike, flag GetChoice) error {
+	dep := client.getDependency(result, flag)
+	if dep == nil {
+		return nil // No dependencies to check
+	}
+
+	exists, err := client.ExistCheck(dep.id, dep.flag)
+	if err != nil {
+		client.Logger.Errorf("Error checking if %s %d exists: %v", dep.name, dep.id, err)
+		return err
+	}
+
+	if !exists {
+		if err = client.GetOne(dep.id, dep.flag); err != nil {
+			client.Logger.Errorf("Error getting %s %d: %v", dep.name, dep.id, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// dependency represents a dependency that needs to be checked.
+type dependency struct {
+	id   int
+	flag GetChoice
+	name string
+}
+
+// getDependency returns the dependency info for a given entity type.
+func (client *PandaClient) getDependency(result pandatypes.PandaDataLike, flag GetChoice) *dependency {
+	switch flag {
+	case FlagLeague:
+		if r, ok := result.(pandatypes.LeagueLike); ok {
+			return &dependency{
+				id:   r.Videogame.ID,
+				flag: FlagGame,
+				name: "game",
+			}
+		}
+	case FlagSeries:
+		if r, ok := result.(pandatypes.SeriesLike); ok {
+			return &dependency{
+				id:   r.LeagueID,
+				flag: FlagLeague,
+				name: "league",
+			}
+		}
+	case FlagTournament:
+		if r, ok := result.(pandatypes.TournamentLike); ok {
+			return &dependency{
+				id:   r.SerieID,
+				flag: FlagSeries,
+				name: "series",
+			}
+		}
+	case FlagMatch:
+		if r, ok := result.(pandatypes.MatchLike); ok {
+			return &dependency{
+				id:   r.TournamentID,
+				flag: FlagTournament,
+				name: "tournament",
+			}
+		}
+	// No dependencies for FlagGame and FlagTeam
+	case FlagTeam:
+		return nil
+	case FlagGame:
+		return nil
+	}
+	return nil
 }
 
 // GetOne gets a single entity from the Pandascore API.
@@ -107,18 +175,18 @@ func (client *PandaClient) ParseResponse(body []byte, flag GetChoice) (pandatype
 func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 	searchString, err := flagToString(flag)
 	if err != nil {
-		client.logger.Error("Error converting flag to string: %v", err)
+		client.Logger.Error("Error converting flag to string: %v", err)
 		return err
 	}
-	client.logger.Infof("Getting %s %d", searchString, id)
+	client.Logger.Infof("Getting %s %d", searchString, id)
 	resp, err := client.MakeRequest([]string{searchString, strconv.Itoa(id)}, nil)
 	if err != nil {
-		client.logger.Error("Error making request to Pandascore API: %v", err)
+		client.Logger.Error("Error making request to Pandascore API: %v", err)
 		return err
 	}
 	// Check if the response status code is 200 OK
 	if resp.StatusCode != http.StatusOK {
-		client.logger.Error("Error: received status code %d", resp.StatusCode)
+		client.Logger.Error("Error: received status code %d", resp.StatusCode)
 		return fmt.Errorf("received status code %d", resp.StatusCode)
 	}
 	defer resp.Body.Close()
@@ -130,10 +198,10 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 
 	result, err := client.ParseResponse(body, flag)
 	if err != nil {
-		client.logger.Error("Error parsing response: %v", err)
+		client.Logger.Error("Error parsing response: %v", err)
 	}
 
-	err = result.ToRow().WriteToDB(client.ctx, client.dbConnector)
+	err = result.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 	if err != nil {
 		return err
 	}
@@ -144,21 +212,27 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 // @param matches - the matches to write.
 func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 	for _, match := range matches {
-		client.logger.Debugf("Checking if tournament %d exists", match.TournamentID)
-		err := client.ExistCheck(match.TournamentID, FlagTournament)
+		exists, err := client.ExistCheck(match.TournamentID, FlagTournament)
 		if err != nil {
-			client.logger.Error(err)
+			client.Logger.Error(err)
 			continue
 		}
-		client.logger.Infof("Writing match %s", match.Name)
+		if !exists {
+			err = client.GetOne(match.TournamentID, FlagTournament)
+			if err != nil {
+				client.Logger.Error(err)
+				continue
+			}
+		}
+		client.Logger.Infof("Writing match %s", match.Name)
 		row, success := match.ToRow().(pandatypes.MatchRow)
 		if !success {
-			client.logger.Errorf("Error converting match row to match row (??), %v", row)
+			client.Logger.Errorf("Error converting match row to match row (??), %v", row)
 			continue
 		}
-		err = row.WriteToDB(client.ctx, client.dbConnector)
+		err = row.WriteToDB(client.Ctx, client.DBConnector)
 		if err != nil {
-			client.logger.Error(err)
+			client.Logger.Error(err)
 			continue
 		}
 		if row.Finished {
@@ -171,17 +245,17 @@ func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 // @param match - the match to check.
 func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 	if match.WinnerType != "Team" {
-		client.logger.Infof("Match %d is not a team match", match.ID)
+		client.Logger.Infof("Match %d is not a team match", match.ID)
 		return
 	}
 	for _, opponent := range match.Opponents {
-		exists, err := TeamExists(client.ctx, client.dbConnector, opponent.Opponent.ID)
+		exists, err := client.ExistCheck(opponent.Opponent.ID, FlagTeam)
 		if err != nil {
-			client.logger.Error(err)
+			client.Logger.Error(err)
 			continue
 		}
 		if !exists {
-			client.logger.Infof("Team %s does not exist", opponent.Opponent.Name)
+			client.Logger.Infof("Team %s does not exist", opponent.Opponent.Name)
 			err = pandatypes.TeamRow{
 				ID:        opponent.Opponent.ID,
 				GameID:    match.Videogame.ID,
@@ -189,66 +263,63 @@ func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 				Acronym:   opponent.Opponent.Acronym,
 				Slug:      opponent.Opponent.Slug,
 				ImageLink: opponent.Opponent.ImageURL,
-			}.WriteToDB(client.ctx, client.dbConnector)
+			}.WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
-				client.logger.Error(err)
+				client.Logger.Error(err)
 				continue
 			}
 		} else {
-			client.logger.Infof("Team %s exists", opponent.Opponent.Name)
+			client.Logger.Infof("Team %s exists", opponent.Opponent.Name)
 		}
 	}
-}
-
-// TeamExists checks if a team exists in the database.
-// @param db - the database connection
-// @param teamID - the ID of the team to check
-// @returns true if the team exists, false otherwise, and an error if one occurred.
-func TeamExists(ctx context.Context, db *pgx.Conn, teamID int) (bool, error) {
-	var id int
-	err := db.QueryRow(ctx, "SELECT id FROM teams WHERE id = $1", teamID).Scan(&id)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return false, err
-	}
-	return id != 0, nil
 }
 
 // ExistCheck checks if an entity exists in the database.
-// If entity does not exist, get it from the api.
 // @param id - the ID of the entity to check.
 // @param flag - the type of entity to check.
 // @returns an error if one occurred.
-func (client *PandaClient) ExistCheck(id int, flag GetChoice) error {
-	var dbString string
+func (client *PandaClient) ExistCheck(id int, flag GetChoice) (bool, error) {
+	var dbResult int64
+	var err error
+	stringFlag, err := flagToString(flag)
+	if err != nil {
+		client.Logger.Error("Error converting flag to string: %v", err)
+		return false, err
+	}
+	client.Logger.Debugf("Checking if %s with ID %d exists", stringFlag, id)
+
+	// Safely convert int to int32
+	id32, err := pandatypes.SafeIntToInt32(id)
+	if err != nil {
+		client.Logger.Errorf("Error converting ID %d to int32: %v", id, err)
+		return false, err
+	}
+
 	switch flag {
 	case FlagGame:
-		dbString = "SELECT id FROM games WHERE id = $1"
+		dbResult, err = client.DBConnector.GameExist(client.Ctx, id32)
 	case FlagLeague:
-		dbString = "SELECT id FROM leagues WHERE id = $1"
+		dbResult, err = client.DBConnector.LeagueExist(client.Ctx, id32)
 	case FlagSeries:
-		dbString = "SELECT id FROM series WHERE id = $1"
+		dbResult, err = client.DBConnector.SeriesExist(client.Ctx, id32)
 	case FlagTournament:
-		dbString = "SELECT id FROM tournaments WHERE id = $1"
+		dbResult, err = client.DBConnector.TournamentExist(client.Ctx, id32)
 	case FlagMatch:
-		dbString = "SELECT id FROM matches WHERE id = $1"
+		dbResult, err = client.DBConnector.MatchExist(client.Ctx, id32)
 	case FlagTeam:
-		dbString = "SELECT id FROM teams WHERE id = $1"
+		dbResult, err = client.DBConnector.TeamExist(client.Ctx, id32)
 	default:
-		client.logger.Error("Invalid flag")
-		return fmt.Errorf("invalid flag: %d", flag)
+		client.Logger.Error("Invalid flag")
+		return false, fmt.Errorf("invalid flag: %d", flag)
 	}
-	err := client.dbConnector.QueryRow(client.ctx, dbString, id).Scan(&id)
-	// we ignore the error if row doesn't exist
-
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return err
+		client.Logger.Error("Error checking if entity exists: %v", err)
+		return false, err
 	}
-	if id == 0 || errors.Is(err, pgx.ErrNoRows) {
-		client.logger.Infof("%d %d currently does not exist", flag, id)
-		err = client.GetOne(id, flag)
-		if err != nil {
-			return err
-		}
+	if dbResult == 0 {
+		client.Logger.Debugf("%s with ID %d does not exist", stringFlag, id)
+		return false, nil
 	}
-	return nil
+	client.Logger.Debugf("%s with ID %d exists", stringFlag, id)
+	return true, nil
 }

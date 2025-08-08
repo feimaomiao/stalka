@@ -4,12 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"os"
 
-	"github.com/feimaomiao/stalka/database"
 	"go.uber.org/zap"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/feimaomiao/stalka/dbtypes"
 )
 
 type GetChoice int
@@ -25,35 +23,17 @@ const (
 
 // PandaClient is a client for the Pandascore API.
 type PandaClient struct {
-	pandasecret string
-	logger      *zap.SugaredLogger
-	httpClient  *http.Client
-	dbConnector *pgx.Conn
-	run         int
-	ctx         context.Context
+	Pandasecret string
+	Logger      *zap.SugaredLogger
+	HTTPClient  *http.Client
+	DBConnector *dbtypes.Queries
+	Run         int
+	Ctx         context.Context
 }
 
 // GetRun is a wrapper for the run variable, which counts the number of requests made.
 func (client *PandaClient) GetRun() int {
-	return client.run
-}
-
-// NewPandaClient creates a new PandaClient.
-// @param logger - the logger to use
-// @returns a new PandaClient and an error if one occurred.
-func NewPandaClient(logger *zap.SugaredLogger) (PandaClient, error) {
-	dbConnector, err := database.Connect("writer", os.Getenv("writer_password"))
-	if err != nil {
-		return PandaClient{}, err
-	}
-	return PandaClient{
-		pandasecret: os.Getenv("pandascore_secret"),
-		logger:      logger,
-		httpClient:  &http.Client{},
-		dbConnector: dbConnector,
-		run:         0,
-		ctx:         context.Background(),
-	}, nil
+	return client.Run
 }
 
 // Startup performs the initial setup for the PandaClient, which includes
@@ -84,7 +64,7 @@ func (client *PandaClient) Startup() error {
 	if err != nil {
 		return err
 	}
-	client.logger.Infof("Done with initial setup, made %d requests", client.GetRun())
+	client.Logger.Infof("Done with initial setup, made %d requests", client.GetRun())
 	return nil
 }
 
@@ -101,21 +81,21 @@ func (client *PandaClient) MakeRequest(paths []string, params map[string]string)
 		searchurl.Path += path + "/"
 	}
 
-	req, err := http.NewRequestWithContext(client.ctx, http.MethodGet, searchurl.String(), nil)
+	req, err := http.NewRequestWithContext(client.Ctx, http.MethodGet, searchurl.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("Accept", "application/json")
-	req.Header.Add("Authorization", "Bearer "+client.pandasecret)
+	req.Header.Add("Authorization", "Bearer "+client.Pandasecret)
 	q := req.URL.Query()
 	for key, value := range params {
 		q.Add(key, value)
 	}
 	q.Set("per_page", "100")
 	req.URL.RawQuery = q.Encode()
-	client.logger.Info("Making request to " + req.URL.String())
-	resp, err := client.httpClient.Do(req)
-	client.run++
+	client.Logger.Info("Making request to " + req.URL.String())
+	resp, err := client.HTTPClient.Do(req)
+	client.Run++
 	if err != nil {
 		return nil, err
 	}
