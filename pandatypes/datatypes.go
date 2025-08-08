@@ -582,6 +582,11 @@ func (match MatchLike) ToRow() RowLike {
 }
 
 func (row MatchRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
+	var inftyModifier pgtype.InfinityModifier
+	inftyModifier = 0
+	if row.ExpectedStartTime.IsZero() {
+		inftyModifier = pgtype.Infinity
+	}
 	err := db.InsertToMatches(ctx, dbtypes.InsertToMatchesParams{
 		ID:       mustSafeIntToInt32(row.ID),
 		Name:     row.Name,
@@ -589,8 +594,8 @@ func (row MatchRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 		Finished: row.Finished,
 		ExpectedStartTime: pgtype.Timestamp{
 			Time:             row.ExpectedStartTime,
-			Valid:            !row.ExpectedStartTime.IsZero(),
-			InfinityModifier: 0,
+			Valid:            true,
+			InfinityModifier: inftyModifier,
 		},
 		Team1ID:       mustSafeIntToInt32(row.Team1ID),
 		Team1Score:    mustSafeIntToInt32(row.Team1Score),
