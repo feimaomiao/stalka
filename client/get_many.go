@@ -8,7 +8,7 @@ import (
 
 	"encoding/json"
 
-	pandatypes "github.com/feimaomiao/stalka/pandatypes_old"
+	"github.com/feimaomiao/stalka/pandatypes"
 	// loads .env file automatically.
 	_ "github.com/joho/godotenv/autoload"
 )
@@ -22,10 +22,10 @@ const (
 // UpdateGames updates all games in the database.
 // @returns an error if one occurred.
 func (client *PandaClient) UpdateGames() error {
-	client.logger.Info("Updating games")
+	client.Logger.Info("Updating games")
 	resp, err := client.MakeRequest([]string{"videogames"}, nil)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		client.logger.Error("Error making request to Pandascore API")
+		client.Logger.Errorf("Error making request to Pandascore API: %v", err)
 		return err
 	}
 	defer resp.Body.Close()
@@ -38,12 +38,14 @@ func (client *PandaClient) UpdateGames() error {
 	var result pandatypes.GameLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
+		client.Logger.Errorf("Error unmarshalling response: %v", err)
 		return err
 	}
 	for _, game := range result {
-		client.logger.Debugf("Writing game %s", game.Name)
-		err = game.ToRow().WriteToDB(client.ctx, client.dbConnector)
+		client.Logger.Debugf("Writing game %s", game.Name)
+		err = game.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 		if err != nil {
+			client.Logger.Errorf("Error writing game %s to database: %v", game.Name, err)
 			return err
 		}
 	}
@@ -56,29 +58,32 @@ func (client *PandaClient) GetLeagues(setup bool) error {
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
 	for i := range 15 {
-		client.logger.Info("Getting leagues page " + strconv.Itoa(i))
+		client.Logger.Info("Getting leagues page " + strconv.Itoa(i))
 		keys["page"] = strconv.Itoa(i)
 		resp, err := client.MakeRequest([]string{"leagues"}, keys)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			client.logger.Error("Error making request to Pandascore API")
+			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
 			return err
 		}
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
+			client.Logger.Errorf("Error reading response: %v", err)
 			return err
 		}
 
 		var result pandatypes.LeagueLikes
 		err = json.Unmarshal(body, &result)
 		if err != nil {
+			client.Logger.Errorf("Error unmarshalling response: %v", err)
 			return err
 		}
 		for _, league := range result {
-			client.logger.Debugf("Writing league %s", league.Name)
-			err = league.ToRow().WriteToDB(client.ctx, client.dbConnector)
+			client.Logger.Debugf("Writing league %s", league.Name)
+			err = league.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
+				client.Logger.Errorf("Error writing league %s to database: %v", league.Name, err)
 				return err
 			}
 		}
@@ -92,40 +97,47 @@ func (client *PandaClient) GetLeagues(setup bool) error {
 // GetSeries gets the first 200 series from the Pandascore API.
 // @returns an error if one occurred.
 func (client *PandaClient) GetSeries(setup bool) error {
-	client.logger.Info("Getting series")
+	client.Logger.Info("Getting series")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
 	for i := range 20 {
-		client.logger.Debugf("Getting series page %d", i)
+		client.Logger.Debugf("Getting series page %d", i)
 		keys["page"] = strconv.Itoa(i)
 		resp, err := client.MakeRequest([]string{"series"}, nil)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			client.logger.Error("Error making request to Pandascore API")
+			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
 			return err
 		}
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			client.logger.Error("Error reading response: %v", err)
+			client.Logger.Errorf("Error reading response: %v", err)
 			return err
 		}
 
 		var result pandatypes.SeriesLikes
 		err = json.Unmarshal(body, &result)
 		if err != nil {
-			client.logger.Error("Error unmarshalling response: %v", err)
+			client.Logger.Errorf("Error unmarshalling response: %v", err)
 			return err
 		}
+		var exists bool
 		for _, series := range result {
-			err = client.ExistCheck(series.League.ID, FlagLeague)
+			exists, err = client.ExistCheck(series.League.ID, FlagLeague)
 			if err != nil {
-				client.logger.Error("Error checking if league exists: %v", err)
 				continue
 			}
-			client.logger.Debugf("Writing series %s, with league_id %d", series.Name, series.LeagueID)
-			err = series.ToRow().WriteToDB(client.ctx, client.dbConnector)
+			if !exists {
+				err = client.GetOne(series.League.ID, FlagLeague)
+				if err != nil {
+					continue
+				}
+			}
+			client.Logger.Debugf("Writing series %s, with league_id %d", series.Name, series.LeagueID)
+			err = series.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
+				client.Logger.Errorf("Error writing series %s to database: %v", series.Name, err)
 				return err
 			}
 		}
@@ -136,18 +148,18 @@ func (client *PandaClient) GetSeries(setup bool) error {
 	return nil
 }
 
-// GetTournaments gets the first 200 tournaments from the Pandascore API.
+// GetTournaments gets the first 1000 tournaments from the Pandascore API.
 // @returns an error if one occurred.
 func (client *PandaClient) GetTournaments(setup bool) error {
-	client.logger.Info("Getting tournaments")
+	client.Logger.Info("Getting tournaments")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
-	for i := range 20 {
+	for i := range 10 {
 		keys["page"] = strconv.Itoa(i)
-		client.logger.Debugf("Getting tournaments page %d", i)
+		client.Logger.Debugf("Getting tournaments page %d", i)
 		resp, err := client.MakeRequest([]string{"tournaments"}, keys)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			client.logger.Error("Error making request to Pandascore API")
+			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
 			return err
 		}
 		defer resp.Body.Close()
@@ -162,16 +174,23 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 		if err != nil {
 			return err
 		}
+		var exists bool
 		for _, tournament := range result {
-			client.logger.Debugf("Checking if series exists %d", tournament.SerieID)
-			err = client.ExistCheck(tournament.SerieID, FlagSeries)
+			exists, err = client.ExistCheck(tournament.SerieID, FlagSeries)
 			if err != nil {
-				client.logger.Error(err)
 				continue
 			}
-			client.logger.Debugf("Writing tournament %s", tournament.Name)
-			err = tournament.ToRow().WriteToDB(client.ctx, client.dbConnector)
+			if !exists {
+				client.Logger.Infof("Serie %d does not exist, getting", tournament.SerieID)
+				err = client.GetOne(tournament.SerieID, FlagSeries)
+				if err != nil {
+					continue
+				}
+			}
+			client.Logger.Debugf("Writing tournament %s", tournament.Name)
+			err = tournament.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
+				client.Logger.Errorf("Error writing tournament %s to database: %v", tournament.Name, err)
 				return err
 			}
 		}
@@ -186,7 +205,7 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- pandatypes.ResultMatchLikes) {
 	polarity := 2
 	defer wg.Done()
-	client.logger.Debugf("Getting upcoming matches page %d", page)
+	client.Logger.Debugf("Getting upcoming matches page %d", page)
 	reqStr := "upcoming"
 	if page%2 == 1 {
 		reqStr = "past"
@@ -197,14 +216,14 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 	pageMap["page"] = strconv.Itoa(page / polarity)
 	resp, err := client.MakeRequest([]string{"matches", reqStr}, pageMap)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		client.logger.Errorf("Error making request to Pandascore API %v, %d on request %d", err, resp.StatusCode, page)
+		client.Logger.Errorf("Error making request to Pandascore API %v, %d on request %d", err, resp.StatusCode, page)
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		client.logger.Errorf("Error reading response: %v", err)
+		client.Logger.Errorf("Error reading response: %v", err)
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
@@ -212,7 +231,7 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 	var result pandatypes.MatchLikes
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		client.logger.Errorf("Error unmarshalling response: %v", err)
+		client.Logger.Errorf("Error unmarshalling response: %v", err)
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
@@ -223,7 +242,7 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 // GetMatches gets all upcoming and past matches and writes to the database.
 // @returns an error if one occurred.
 func (client *PandaClient) GetMatches(setup bool) error {
-	client.logger.Info("Getting matches")
+	client.Logger.Info("Getting matches")
 	var result pandatypes.MatchLikes
 	var wg sync.WaitGroup
 	var pageCount int
@@ -241,7 +260,6 @@ func (client *PandaClient) GetMatches(setup bool) error {
 	close(varChan)
 	for res := range varChan {
 		if res.Err != nil {
-			client.logger.Error(res.Err)
 			continue
 		}
 		result = append(result, res.Matches...)
@@ -251,36 +269,36 @@ func (client *PandaClient) GetMatches(setup bool) error {
 }
 
 func (client *PandaClient) GetTeams(setup bool) error {
-	client.logger.Info("Getting teams")
+	client.Logger.Info("Getting teams")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
 	for i := range 20 {
-		client.logger.Debugf("Getting teams page %d", i)
+		client.Logger.Debugf("Getting teams page %d", i)
 		keys["page"] = strconv.Itoa(i)
 		resp, err := client.MakeRequest([]string{"teams"}, nil)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			client.logger.Error("Error making request to Pandascore API")
+			client.Logger.Error("Error making request to Pandascore API")
 			return err
 		}
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			client.logger.Error("Error reading response: %v", err)
+			client.Logger.Errorf("Error reading response: %v", err)
 			return err
 		}
 
 		var result pandatypes.TeamLikes
 		err = json.Unmarshal(body, &result)
 		if err != nil {
-			client.logger.Error("Error unmarshalling response: %v", err)
+			client.Logger.Errorf("Error unmarshalling response: %v", err)
 			return err
 		}
 		for _, teams := range result {
-			client.logger.Debugf("Writing team %s in game %d", teams.Name, teams.CurrentVideogame.ID)
-			err = teams.ToRow().WriteToDB(client.ctx, client.dbConnector)
+			client.Logger.Debugf("Writing team %s in game %d", teams.Name, teams.CurrentVideogame.ID)
+			err = teams.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
-				client.logger.Error("Error writing team to database: %v", err)
+				client.Logger.Errorf("Error writing team to database: %v", err)
 				return err
 			}
 		}

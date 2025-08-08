@@ -5,6 +5,6 @@ sql:
     queries: "static/queries.sql"
     gen:
       go:
-        package: "pandatypes"
+        package: "dbtypes"
         sql_package: "pgx/v5"
-        out: "pandatypes"
+        out: "dbtypes"

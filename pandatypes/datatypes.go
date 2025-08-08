@@ -2,10 +2,35 @@ package pandatypes
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/feimaomiao/stalka/dbtypes"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+// SafeIntToInt32 safely converts an int to int32, returning an error if the value overflows.
+// @param value - the int value to convert.
+// @returns the int32 value and an error if overflow occurs.
+func SafeIntToInt32(value int) (int32, error) {
+	if value > math.MaxInt32 || value < math.MinInt32 {
+		return 0, fmt.Errorf("value %d overflows int32 range [%d, %d]", value, math.MinInt32, math.MaxInt32)
+	}
+	return int32(value), nil
+}
+
+// mustSafeIntToInt32 safely converts an int to int32, panicking if the value overflows.
+// This is used in contexts where the caller should handle the overflow case beforehand.
+// @param value - the int value to convert.
+// @returns the int32 value, panics on overflow.
+func mustSafeIntToInt32(value int) int32 {
+	result, err := SafeIntToInt32(value)
+	if err != nil {
+		panic(fmt.Sprintf("int32 conversion overflow: %v", err))
+	}
+	return result
+}
 
 const (
 	twoTeams = 2
@@ -16,7 +41,7 @@ type PandaDataLike interface {
 }
 
 type RowLike interface {
-	WriteToDB(ctx context.Context, db *pgx.Conn) error
+	WriteToDB(ctx context.Context, db *dbtypes.Queries) error
 }
 
 type GameLike struct {
@@ -387,14 +412,12 @@ func (game GameLike) ToRow() RowLike {
 	}
 }
 
-func (row GameRow) WriteToDB(ctx context.Context, db *pgx.Conn) error {
-	_, err := db.Exec(
-		ctx,
-		"INSERT INTO games (id, slug, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING;",
-		row.ID,
-		row.Slug,
-		row.Name,
-	)
+func (row GameRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
+	err := db.InsertToGames(ctx, dbtypes.InsertToGamesParams{
+		ID:   mustSafeIntToInt32(row.ID),
+		Slug: pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
+		Name: row.Name,
+	})
 	return err
 }
 
@@ -416,16 +439,14 @@ func (league LeagueLike) ToRow() RowLike {
 	}
 }
 
-func (row LeagueRow) WriteToDB(ctx context.Context, db *pgx.Conn) error {
-	_, err := db.Exec(
-		ctx,
-		"INSERT INTO leagues (id,slug, game_id, name, image_link) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
-		row.ID,
-		row.Slug,
-		row.GameID,
-		row.Name,
-		row.ImageLink,
-	)
+func (row LeagueRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
+	err := db.InsertToLeagues(ctx, dbtypes.InsertToLeaguesParams{
+		ID:        mustSafeIntToInt32(row.ID),
+		Slug:      pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
+		GameID:    mustSafeIntToInt32(row.GameID),
+		Name:      row.Name,
+		ImageLink: pgtype.Text{String: row.ImageLink, Valid: row.ImageLink != ""},
+	})
 	return err
 }
 
@@ -447,16 +468,14 @@ func (series SeriesLike) ToRow() RowLike {
 	}
 }
 
-func (row SeriesRow) WriteToDB(ctx context.Context, db *pgx.Conn) error {
-	_, err := db.Exec(
-		ctx,
-		"INSERT INTO series (id,slug, game_id, league_id, name) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
-		row.ID,
-		row.Slug,
-		row.GameID,
-		row.LeagueID,
-		row.Name,
-	)
+func (row SeriesRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
+	err := db.InsertToSeries(ctx, dbtypes.InsertToSeriesParams{
+		ID:       mustSafeIntToInt32(row.ID),
+		Slug:     pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
+		GameID:   mustSafeIntToInt32(row.GameID),
+		LeagueID: mustSafeIntToInt32(row.LeagueID),
+		Name:     row.Name,
+	})
 	return err
 }
 
@@ -497,18 +516,16 @@ func (tournament TournamentLike) ToRow() RowLike {
 	}
 }
 
-func (row TournamentRow) WriteToDB(ctx context.Context, db *pgx.Conn) error {
-	_, err := db.Exec(
-		ctx,
-		"INSERT INTO tournaments (id, slug, game_id, serie_id, league_id, tier, name) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING;",
-		row.ID,
-		row.Slug,
-		row.GameID,
-		row.SerieID,
-		row.LeagueID,
-		row.Tier,
-		row.Name,
-	)
+func (row TournamentRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
+	err := db.InsertToTournaments(ctx, dbtypes.InsertToTournamentsParams{
+		ID:       mustSafeIntToInt32(row.ID),
+		Slug:     pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
+		Name:     row.Name,
+		Tier:     pgtype.Int4{Int32: mustSafeIntToInt32(row.Tier), Valid: row.Tier != 0},
+		GameID:   mustSafeIntToInt32(row.GameID),
+		SerieID:  mustSafeIntToInt32(row.SerieID),
+		LeagueID: mustSafeIntToInt32(row.LeagueID),
+	})
 	return err
 }
 
@@ -564,26 +581,27 @@ func (match MatchLike) ToRow() RowLike {
 	}
 }
 
-func (row MatchRow) WriteToDB(ctx context.Context, db *pgx.Conn) error {
-	_, err := db.Exec(
-		ctx,
-		"INSERT INTO matches (id,slug, finished,game_id, league_id, series_id, tournament_id, Team1_id, Team1_score, Team2_id, Team2_score, name, expected_start_time, amount_of_games, actual_game_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO NOTHING;",
-		row.ID,
-		row.Slug,
-		row.Finished,
-		row.GameID,
-		row.LeagueID,
-		row.SerieID,
-		row.TournamentID,
-		row.Team1ID,
-		row.Team1Score,
-		row.Team2ID,
-		row.Team2Score,
-		row.Name,
-		row.ExpectedStartTime,
-		row.AmountOfGames,
-		row.ActualGameTime,
-	)
+func (row MatchRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
+	err := db.InsertToMatches(ctx, dbtypes.InsertToMatchesParams{
+		ID:       mustSafeIntToInt32(row.ID),
+		Name:     row.Name,
+		Slug:     pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
+		Finished: row.Finished,
+		ExpectedStartTime: pgtype.Timestamp{
+			Time:             row.ExpectedStartTime,
+			Valid:            !row.ExpectedStartTime.IsZero(),
+			InfinityModifier: 0,
+		},
+		Team1ID:       mustSafeIntToInt32(row.Team1ID),
+		Team1Score:    mustSafeIntToInt32(row.Team1Score),
+		Team2ID:       mustSafeIntToInt32(row.Team2ID),
+		Team2Score:    mustSafeIntToInt32(row.Team2Score),
+		AmountOfGames: mustSafeIntToInt32(row.AmountOfGames),
+		GameID:        mustSafeIntToInt32(row.GameID),
+		LeagueID:      mustSafeIntToInt32(row.LeagueID),
+		SeriesID:      mustSafeIntToInt32(row.SerieID),
+		TournamentID:  mustSafeIntToInt32(row.TournamentID),
+	})
 	return err
 }
 
@@ -607,16 +625,14 @@ func (team TeamLike) ToRow() RowLike {
 	}
 }
 
-func (row TeamRow) WriteToDB(ctx context.Context, db *pgx.Conn) error {
-	_, err := db.Exec(
-		ctx,
-		"INSERT INTO teams (id,slug, game_id, name, acronym, image_link) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING;",
-		row.ID,
-		row.Slug,
-		row.GameID,
-		row.Name,
-		row.Acronym,
-		row.ImageLink,
-	)
+func (row TeamRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
+	err := db.InsertToTeams(ctx, dbtypes.InsertToTeamsParams{
+		ID:        mustSafeIntToInt32(row.ID),
+		Name:      row.Name,
+		Slug:      pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
+		Acronym:   pgtype.Text{String: row.Acronym, Valid: row.Acronym != ""},
+		ImageLink: pgtype.Text{String: row.ImageLink, Valid: row.ImageLink != ""},
+		GameID:    mustSafeIntToInt32(row.GameID),
+	})
 	return err
 }
