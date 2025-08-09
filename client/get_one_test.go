@@ -7,6 +7,7 @@ import (
 
 	"github.com/feimaomiao/stalka/pandatypes"
 	"github.com/nbio/st"
+	"go.uber.org/zap"
 )
 
 func TestFlagToString(t *testing.T) {
@@ -177,11 +178,13 @@ func TestGetDependency(t *testing.T) {
 }
 
 func TestUnmarshalByFlag(t *testing.T) {
-	client := &PandaClient{}
+	client := &PandaClient{
+		Logger: zap.NewNop().Sugar(),
+	}
 
 	t.Run("Unmarshal Game", func(t *testing.T) {
 		gameData, err := os.ReadFile("../static/fetch_data/videogames.json")
-		st.Expect(t, err, nil)
+		st.Assert(t, err, nil)
 
 		result, err := client.unmarshalByFlag(gameData, FlagGame)
 		st.Expect(t, err, nil)
@@ -196,7 +199,7 @@ func TestUnmarshalByFlag(t *testing.T) {
 
 	t.Run("Unmarshal League", func(t *testing.T) {
 		leagueData, err := os.ReadFile("../static/fetch_data/leagues.json")
-		st.Expect(t, err, nil)
+		st.Assert(t, err, nil)
 
 		result, err := client.unmarshalByFlag(leagueData, FlagLeague)
 		st.Expect(t, err, nil)
@@ -212,7 +215,7 @@ func TestUnmarshalByFlag(t *testing.T) {
 
 	t.Run("Unmarshal Series", func(t *testing.T) {
 		seriesData, err := os.ReadFile("../static/fetch_data/series.json")
-		st.Expect(t, err, nil)
+		st.Assert(t, err, nil)
 
 		result, err := client.unmarshalByFlag(seriesData, FlagSeries)
 		st.Expect(t, err, nil)
@@ -228,7 +231,7 @@ func TestUnmarshalByFlag(t *testing.T) {
 
 	t.Run("Unmarshal Tournament", func(t *testing.T) {
 		tournamentData, err := os.ReadFile("../static/fetch_data/tournaments.json")
-		st.Expect(t, err, nil)
+		st.Assert(t, err, nil)
 
 		result, err := client.unmarshalByFlag(tournamentData, FlagTournament)
 		st.Expect(t, err, nil)
@@ -243,7 +246,7 @@ func TestUnmarshalByFlag(t *testing.T) {
 
 	t.Run("Unmarshal Match", func(t *testing.T) {
 		matchData, err := os.ReadFile("../static/fetch_data/matches.json")
-		st.Expect(t, err, nil)
+		st.Assert(t, err, nil)
 
 		result, err := client.unmarshalByFlag(matchData, FlagMatch)
 		st.Expect(t, err, nil)
@@ -259,7 +262,7 @@ func TestUnmarshalByFlag(t *testing.T) {
 
 	t.Run("Unmarshal Team", func(t *testing.T) {
 		teamData, err := os.ReadFile("../static/fetch_data/teams.json")
-		st.Expect(t, err, nil)
+		st.Assert(t, err, nil)
 
 		result, err := client.unmarshalByFlag(teamData, FlagTeam)
 		st.Expect(t, err, nil)
@@ -280,6 +283,15 @@ func TestUnmarshalByFlag(t *testing.T) {
 
 		st.Reject(t, err, nil)
 		st.Expect(t, strings.Contains(err.Error(), "invalid flag"), true)
+		st.Expect(t, result, nil)
+	})
+
+	t.Run("Bad json", func(t *testing.T) {
+		badJson := `{"id": "hello", "name": "Test", "extra_field": "unexpected"}`
+
+		result, err := client.unmarshalByFlag([]byte(badJson), FlagGame)
+
+		st.Reject(t, err, nil)
 		st.Expect(t, result, nil)
 	})
 }
