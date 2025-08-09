@@ -74,6 +74,7 @@ func main() {
 	// Initialize the PandaClient with the database connector and logger.
 	// The PandaClient will be used to make requests to the Pandascore API.
 	client := client.PandaClient{
+		BaseURL:     "https://api.pandascore.co/",
 		Pandasecret: os.Getenv("pandascore_secret"),
 		Logger:      sugar,
 		HTTPClient:  &http.Client{},

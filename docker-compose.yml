@@ -8,7 +8,6 @@ services:
       POSTGRES_USER: ${postgres_user}
       POSTGRES_PASSWORD: ${postgres_password}
       POSTGRES_DB: esports
-      READER_PASSWORD: ${reader_password}
     user: ${postgres_user}
     volumes:
         - ./data:/var/lib/postgresql/data
@@ -24,10 +23,7 @@ services:
         condition: service_healthy
     environment:
       pandascore_secret: ${pandascore_secret}
-      lol_writer_password: ${lol_writer_password}
       postgres_user: ${postgres_user}
       postgres_password: ${postgres_password}
-      reader_password: ${reader_password}
-      writer_password: ${writer_password}
 volumes:
   postgresql_data:

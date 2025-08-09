@@ -215,8 +215,13 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 	// there are 20 pages in total
 	pageMap["page"] = strconv.Itoa(page / polarity)
 	resp, err := client.MakeRequest([]string{"matches", reqStr}, pageMap)
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil {
 		client.Logger.Errorf("Error making request to Pandascore API %v, %d on request %d", err, resp.StatusCode, page)
+		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		client.Logger.Errorf("Error making request to Pandascore API %d on request %d", resp.StatusCode, page)
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}

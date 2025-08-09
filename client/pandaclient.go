@@ -23,6 +23,7 @@ const (
 
 // PandaClient is a client for the Pandascore API.
 type PandaClient struct {
+	BaseURL     string
 	Pandasecret string
 	Logger      *zap.SugaredLogger
 	HTTPClient  *http.Client
@@ -73,7 +74,7 @@ func (client *PandaClient) Startup() error {
 // @param params - the query parameters to add to the request
 // @returns the HTTP response and an error if one occurred.
 func (client *PandaClient) MakeRequest(paths []string, params map[string]string) (*http.Response, error) {
-	searchurl, err := url.Parse("https://api.pandascore.co/")
+	searchurl, err := url.Parse(client.BaseURL)
 	if err != nil {
 		return nil, err
 	}
