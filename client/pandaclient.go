@@ -32,11 +32,6 @@ type PandaClient struct {
 	Ctx         context.Context
 }
 
-// GetRun is a wrapper for the run variable, which counts the number of requests made.
-func (client *PandaClient) GetRun() int {
-	return client.Run
-}
-
 // Startup performs the initial setup for the PandaClient, which includes
 // updating games, leagues, series, tournaments, and matches.
 // @returns an error if any of the requests fail.
@@ -65,7 +60,7 @@ func (client *PandaClient) Startup() error {
 	if err != nil {
 		return err
 	}
-	client.Logger.Infof("Done with initial setup, made %d requests", client.GetRun())
+	client.Logger.Infof("Done with initial setup, made %d requests", client.Run)
 	return nil
 }
 

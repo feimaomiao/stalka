@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
+	github.com/nbio/st v0.0.0-20140626010706-e9e8d9816f32
 	go.uber.org/zap v1.27.0
 )
 

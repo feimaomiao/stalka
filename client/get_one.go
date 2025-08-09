@@ -117,19 +117,19 @@ func (client *PandaClient) ensureDependencies(result pandatypes.PandaDataLike, f
 	return nil
 }
 
-// dependency represents a dependency that needs to be checked.
-type dependency struct {
+// Dependency represents a Dependency that needs to be checked.
+type Dependency struct {
 	id   int
 	flag GetChoice
 	name string
 }
 
 // getDependency returns the dependency info for a given entity type.
-func (client *PandaClient) getDependency(result pandatypes.PandaDataLike, flag GetChoice) *dependency {
+func (client *PandaClient) getDependency(result pandatypes.PandaDataLike, flag GetChoice) *Dependency {
 	switch flag {
 	case FlagLeague:
 		if r, ok := result.(pandatypes.LeagueLike); ok {
-			return &dependency{
+			return &Dependency{
 				id:   r.Videogame.ID,
 				flag: FlagGame,
 				name: "game",
@@ -137,7 +137,7 @@ func (client *PandaClient) getDependency(result pandatypes.PandaDataLike, flag G
 		}
 	case FlagSeries:
 		if r, ok := result.(pandatypes.SeriesLike); ok {
-			return &dependency{
+			return &Dependency{
 				id:   r.LeagueID,
 				flag: FlagLeague,
 				name: "league",
@@ -145,7 +145,7 @@ func (client *PandaClient) getDependency(result pandatypes.PandaDataLike, flag G
 		}
 	case FlagTournament:
 		if r, ok := result.(pandatypes.TournamentLike); ok {
-			return &dependency{
+			return &Dependency{
 				id:   r.SerieID,
 				flag: FlagSeries,
 				name: "series",
@@ -153,7 +153,7 @@ func (client *PandaClient) getDependency(result pandatypes.PandaDataLike, flag G
 		}
 	case FlagMatch:
 		if r, ok := result.(pandatypes.MatchLike); ok {
-			return &dependency{
+			return &Dependency{
 				id:   r.TournamentID,
 				flag: FlagTournament,
 				name: "tournament",

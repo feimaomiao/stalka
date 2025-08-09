@@ -16,7 +16,7 @@ import (
 const (
 	sortedBy   = "-modified_at"
 	Pages      = 20
-	SetupPages = 60
+	SetupPages = 30
 )
 
 // UpdateGames updates all games in the database.

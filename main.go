@@ -42,6 +42,7 @@ func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error
 		log.Error(err, "Failed to connect to database")
 		return DatabaseConnector{}, err
 	}
+	// Ping the database to ensure the connection is established.
 	err = db.Ping(context.Background())
 	if err != nil {
 		log.Error(err)
@@ -54,6 +55,7 @@ func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error
 		return DatabaseConnector{}, err
 	}
 	log.Info("Migrations completed successfully")
+	// Create a dbtypes.Queries object to interact with the database.
 	dbConn := dbtypes.New(db)
 	return DatabaseConnector{
 		DB:     db,
@@ -101,7 +103,7 @@ func main() {
 			if err != nil {
 				sugar.Fatal(err)
 			}
-			sugar.Infof("Done with run, made %d requests so far", client.GetRun())
+			sugar.Infof("Done with run, made %d requests so far", client.Run)
 		}
 	}()
 	go func() {
@@ -127,7 +129,7 @@ func main() {
 			if err != nil {
 				sugar.Fatal(err)
 			}
-			sugar.Infof("Done with setup, made %d requests so far", client.GetRun())
+			sugar.Infof("Done with setup, made %d requests so far", client.Run)
 		}
 	}()
 	for {

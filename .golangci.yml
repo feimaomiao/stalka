@@ -11,7 +11,8 @@
 # Based on https://gist.github.com/maratori/47a4d00457a92aa426dbd48a18776322
 
 version: "2"
-
+run:
+  tests: false 
 issues:
   # Maximum count of issues with the same text.
   # Set to 0 to disable.
