@@ -378,8 +378,8 @@ type ResultMatchLikes struct {
 
 type GameRow struct {
 	ID   int
-	Slug string
 	Name string
+	Slug string
 }
 
 // SafeIntToInt32 converts an int to int32 safely, returning an error if the value overflows.
@@ -396,8 +396,8 @@ func SafeIntToInt32(value int) (int32, error) {
 func (game GameLike) ToRow() RowLike {
 	return GameRow{
 		ID:   game.ID,
-		Slug: game.Slug,
 		Name: game.Name,
+		Slug: game.Slug,
 	}
 }
 
@@ -408,26 +408,26 @@ func (row GameRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 	}
 	err = db.InsertToGames(ctx, dbtypes.InsertToGamesParams{
 		ID:   id,
-		Slug: pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
 		Name: row.Name,
+		Slug: pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
 	})
 	return err
 }
 
 type LeagueRow struct {
 	ID        int
+	Name      string
 	Slug      string
 	GameID    int
-	Name      string
 	ImageLink string
 }
 
 func (league LeagueLike) ToRow() RowLike {
 	return LeagueRow{
 		ID:        league.ID,
+		Name:      league.Name,
 		Slug:      league.Slug,
 		GameID:    league.Videogame.ID,
-		Name:      league.Name,
 		ImageLink: league.ImageURL,
 	}
 }
@@ -444,8 +444,8 @@ func (row LeagueRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 	err = db.InsertToLeagues(ctx, dbtypes.InsertToLeaguesParams{
 		ID:        id,
 		Slug:      pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
-		GameID:    gameID,
 		Name:      row.Name,
+		GameID:    gameID,
 		ImageLink: pgtype.Text{String: row.ImageLink, Valid: row.ImageLink != ""},
 	})
 	return err
@@ -453,19 +453,19 @@ func (row LeagueRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 
 type SeriesRow struct {
 	ID       int
+	Name     string
 	Slug     string
 	GameID   int
 	LeagueID int
-	Name     string
 }
 
 func (series SeriesLike) ToRow() RowLike {
 	return SeriesRow{
 		ID:       series.ID,
+		Name:     series.Name,
 		Slug:     series.Slug,
 		GameID:   series.Videogame.ID,
 		LeagueID: series.League.ID,
-		Name:     series.Name,
 	}
 }
 
@@ -484,22 +484,22 @@ func (row SeriesRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 	}
 	err = db.InsertToSeries(ctx, dbtypes.InsertToSeriesParams{
 		ID:       id,
+		Name:     row.Name,
 		Slug:     pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
 		GameID:   gameID,
 		LeagueID: leagueID,
-		Name:     row.Name,
 	})
 	return err
 }
 
 type TournamentRow struct {
 	ID       int
+	Name     string
 	Slug     string
+	Tier     int
 	GameID   int
 	SerieID  int
 	LeagueID int
-	Tier     int
-	Name     string
 }
 
 func (tournament TournamentLike) ToRow() RowLike {
@@ -520,12 +520,12 @@ func (tournament TournamentLike) ToRow() RowLike {
 	}
 	return TournamentRow{
 		ID:       tournament.ID,
+		Name:     tournament.Name,
 		Slug:     tournament.Slug,
+		Tier:     tier,
 		GameID:   tournament.Videogame.ID,
 		SerieID:  tournament.Serie.ID,
 		LeagueID: tournament.League.ID,
-		Tier:     tier,
-		Name:     tournament.Name,
 	}
 }
 
@@ -552,8 +552,8 @@ func (row TournamentRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) err
 	}
 	err = db.InsertToTournaments(ctx, dbtypes.InsertToTournamentsParams{
 		ID:       id,
-		Slug:     pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
 		Name:     row.Name,
+		Slug:     pgtype.Text{String: row.Slug, Valid: row.Slug != ""},
 		Tier:     pgtype.Int4{Int32: tier, Valid: row.Tier != 0},
 		GameID:   gameID,
 		SerieID:  serieID,
@@ -564,20 +564,20 @@ func (row TournamentRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) err
 
 type MatchRow struct {
 	ID                int
+	Name              string
 	Slug              string
 	Finished          bool
-	GameID            int
-	LeagueID          int
-	SerieID           int
-	TournamentID      int
+	ExpectedStartTime time.Time
 	Team1ID           int
 	Team1Score        int
 	Team2ID           int
 	Team2Score        int
-	Name              string
-	ExpectedStartTime time.Time
 	AmountOfGames     int
 	ActualGameTime    float64
+	GameID            int
+	LeagueID          int
+	SerieID           int
+	TournamentID      int
 }
 
 func (match MatchLike) ToRow() RowLike {
