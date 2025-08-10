@@ -48,6 +48,7 @@ func TestMakeRequest(t *testing.T) {
 }
 
 func TestMakeRequestError(t *testing.T) {
+	expected := (*http.Response)(nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	// create mock panda client
 	client := &PandaClient{
@@ -58,24 +59,27 @@ func TestMakeRequestError(t *testing.T) {
 		HTTPClient:  &http.Client{},
 		DBConnector: &dbtypes.Queries{},
 		Run:         0,
-		Ctx:         ctx,
+		Ctx:         nil,
 	}
 	// url.Parse fails when baseurl is not properly formatted
-	_, err := client.MakeRequest([]string{"videogames"}, map[string]string{
+	res, err := client.MakeRequest([]string{"videogames"}, map[string]string{
 		"otherparam": "hasvalue",
 	})
+	st.Expect(t, res, expected)
 	st.Reject(t, err, nil)
-	//malformed URL would fail httpNewRequestWithContext
-	client.BaseURL = "https://api.panda score.io"
-	_, err = client.MakeRequest([]string{"videogames"}, map[string]string{
+	//nil context
+	client.BaseURL = "https://api.pandascore.io"
+	res, err = client.MakeRequest([]string{"videogames"}, map[string]string{
 		"otherparam": "hasvalue",
 	})
+	st.Expect(t, res, expected)
 	st.Reject(t, err, nil)
-
+	client.Ctx = ctx
 	// context failing would fail client.HTTPClient.Do
 	cancel()
-	_, err = client.MakeRequest([]string{"videogames"}, map[string]string{
+	res, err = client.MakeRequest([]string{"videogames"}, map[string]string{
 		"otherparam": "hasvalue",
 	})
+	st.Expect(t, res, expected)
 	st.Reject(t, err, nil)
 }
