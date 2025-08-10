@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS MATCHES(
     slug VARCHAR(255),
     finished BOOLEAN NOT NULL,
     expected_start_time TIMESTAMP,
+    actual_game_time FLOAT NOT NULL,
     team1_id INT NOT NULL,
     team1_score INT NOT NULL,
     team2_id INT NOT NULL,

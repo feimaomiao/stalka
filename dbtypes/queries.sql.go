@@ -40,19 +40,19 @@ func (q *Queries) InsertToGames(ctx context.Context, arg InsertToGamesParams) er
 }
 
 const insertToLeagues = `-- name: InsertToLeagues :exec
-INSERT INTO leagues (id, name, slug, game_id, image_link) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET
+INSERT INTO leagues (id, name, slug, image_link, game_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug = EXCLUDED.slug,
-    game_id = EXCLUDED.game_id,
-    image_link = EXCLUDED.image_link
+    image_link = EXCLUDED.image_link,
+    game_id = EXCLUDED.game_id
 `
 
 type InsertToLeaguesParams struct {
 	ID        int32
 	Name      string
 	Slug      pgtype.Text
-	GameID    int32
 	ImageLink pgtype.Text
+	GameID    int32
 }
 
 func (q *Queries) InsertToLeagues(ctx context.Context, arg InsertToLeaguesParams) error {
@@ -60,18 +60,19 @@ func (q *Queries) InsertToLeagues(ctx context.Context, arg InsertToLeaguesParams
 		arg.ID,
 		arg.Name,
 		arg.Slug,
-		arg.GameID,
 		arg.ImageLink,
+		arg.GameID,
 	)
 	return err
 }
 
 const insertToMatches = `-- name: InsertToMatches :exec
-INSERT INTO matches (id, name, slug, finished, expected_start_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) ON CONFLICT (id) DO UPDATE SET
+INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug = EXCLUDED.slug,
     finished = EXCLUDED.finished,
     expected_start_time = EXCLUDED.expected_start_time,
+    actual_game_time = EXCLUDED.actual_game_time,
     team1_id = EXCLUDED.team1_id,
     team1_score = EXCLUDED.team1_score,
     team2_id = EXCLUDED.team2_id,
@@ -89,6 +90,7 @@ type InsertToMatchesParams struct {
 	Slug              pgtype.Text
 	Finished          bool
 	ExpectedStartTime pgtype.Timestamp
+	ActualGameTime    float64
 	Team1ID           int32
 	Team1Score        int32
 	Team2ID           int32
@@ -107,6 +109,7 @@ func (q *Queries) InsertToMatches(ctx context.Context, arg InsertToMatchesParams
 		arg.Slug,
 		arg.Finished,
 		arg.ExpectedStartTime,
+		arg.ActualGameTime,
 		arg.Team1ID,
 		arg.Team1Score,
 		arg.Team2ID,

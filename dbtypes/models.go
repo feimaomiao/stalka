@@ -28,6 +28,7 @@ type Match struct {
 	Slug              pgtype.Text
 	Finished          bool
 	ExpectedStartTime pgtype.Timestamp
+	ActualGameTime    float64
 	Team1ID           int32
 	Team1Score        int32
 	Team2ID           int32

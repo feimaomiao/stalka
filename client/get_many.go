@@ -205,15 +205,14 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- pandatypes.ResultMatchLikes) {
 	polarity := 2
 	defer wg.Done()
-	client.Logger.Debugf("Getting upcoming matches page %d", page)
 	reqStr := "upcoming"
 	if page%2 == 1 {
 		reqStr = "past"
 	}
 	pageMap := make(map[string]string)
 	// odd pages are past matches, even pages are upcoming matches
-	// there are 20 pages in total
 	pageMap["page"] = strconv.Itoa(page / polarity)
+	client.Logger.Debugf("Getting %s matches page %d", reqStr, pageMap["page"])
 	resp, err := client.MakeRequest([]string{"matches", reqStr}, pageMap)
 	if err != nil {
 		client.Logger.Errorf("Error making request to Pandascore API %v, %d on request %d", err, resp.StatusCode, page)
