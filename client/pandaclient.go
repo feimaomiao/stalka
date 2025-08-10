@@ -91,9 +91,9 @@ func (client *PandaClient) MakeRequest(paths []string, params map[string]string)
 	req.URL.RawQuery = q.Encode()
 	client.Logger.Info("Making request to " + req.URL.String())
 	resp, err := client.HTTPClient.Do(req)
-	client.Run++
 	if err != nil {
 		return nil, err
 	}
+	client.Run++
 	return resp, nil
 }
