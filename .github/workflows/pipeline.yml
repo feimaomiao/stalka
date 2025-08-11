@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
+      - name: test
+        run: go test ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:

@@ -18,13 +18,13 @@ INSERT INTO series (id, name, slug, game_id, league_id) VALUES ($1, $2, $3, $4, 
     league_id = EXCLUDED.league_id;
 
 -- name: InsertToTournaments :exec
-INSERT INTO tournaments (id,name, slug,tier, game_id, serie_id, league_id) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET
+INSERT INTO tournaments (id,name, slug,tier, game_id, league_id, serie_id) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug = EXCLUDED.slug,
     tier = EXCLUDED.tier,
     game_id = EXCLUDED.game_id,
-    serie_id = EXCLUDED.serie_id,
-    league_id = EXCLUDED.league_id;
+    league_id = EXCLUDED.league_id,
+    serie_id = EXCLUDED.serie_id;
 
 -- name: InsertToMatches :exec
 INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO UPDATE SET

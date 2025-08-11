@@ -63,6 +63,6 @@ type Tournament struct {
 	Slug     pgtype.Text
 	Tier     pgtype.Int4
 	GameID   int32
-	SerieID  int32
 	LeagueID int32
+	SerieID  int32
 }

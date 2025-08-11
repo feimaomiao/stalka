@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS TOURNAMENTS(
     slug VARCHAR(255),
     tier INT,
     game_id INT NOT NULL,
-    serie_id INT NOT NULL,
     league_id INT NOT NULL,
+    serie_id INT NOT NULL,
     FOREIGN KEY (game_id) REFERENCES GAMES(id),
     FOREIGN KEY (serie_id) REFERENCES SERIES(id),
     FOREIGN KEY (league_id) REFERENCES LEAGUES(id)

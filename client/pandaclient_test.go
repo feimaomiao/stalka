@@ -47,6 +47,7 @@ func TestMakeRequest(t *testing.T) {
 	st.Expect(t, resp.StatusCode, 200)
 }
 
+// tests the cases where makerequest function fails
 func TestMakeRequestError(t *testing.T) {
 	expected := (*http.Response)(nil)
 	ctx, cancel := context.WithCancel(context.Background())

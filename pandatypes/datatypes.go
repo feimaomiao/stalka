@@ -498,8 +498,8 @@ type TournamentRow struct {
 	Slug     string
 	Tier     int
 	GameID   int
-	SerieID  int
 	LeagueID int
+	SerieID  int
 }
 
 func (tournament TournamentLike) ToRow() RowLike {
@@ -538,18 +538,16 @@ func (row TournamentRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) err
 	if err != nil {
 		return err
 	}
-	serieID, err := SafeIntToInt32(row.SerieID)
-	if err != nil {
-		return err
-	}
 	leagueID, err := SafeIntToInt32(row.LeagueID)
 	if err != nil {
 		return err
 	}
-	tier, err := SafeIntToInt32(row.Tier)
+	serieID, err := SafeIntToInt32(row.SerieID)
 	if err != nil {
 		return err
 	}
+	//nolint:gosec // tier is fixed by the switch statement previously
+	tier := int32(row.Tier)
 	err = db.InsertToTournaments(ctx, dbtypes.InsertToTournamentsParams{
 		ID:       id,
 		Name:     row.Name,
@@ -665,15 +663,16 @@ func (row MatchRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 			Valid:            !row.ExpectedStartTime.IsZero(),
 			InfinityModifier: 0,
 		},
-		Team1ID:       team1Id,
-		Team1Score:    team1Score,
-		Team2ID:       team2Id,
-		Team2Score:    team2Score,
-		AmountOfGames: gameAmount,
-		GameID:        gameID,
-		LeagueID:      leagueID,
-		SeriesID:      serieID,
-		TournamentID:  tournamentID,
+		ActualGameTime: row.ActualGameTime,
+		Team1ID:        team1Id,
+		Team1Score:     team1Score,
+		Team2ID:        team2Id,
+		Team2Score:     team2Score,
+		AmountOfGames:  gameAmount,
+		GameID:         gameID,
+		LeagueID:       leagueID,
+		SeriesID:       serieID,
+		TournamentID:   tournamentID,
 	})
 	return err
 }

@@ -181,13 +181,13 @@ func (q *Queries) InsertToTeams(ctx context.Context, arg InsertToTeamsParams) er
 }
 
 const insertToTournaments = `-- name: InsertToTournaments :exec
-INSERT INTO tournaments (id,name, slug,tier, game_id, serie_id, league_id) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET
+INSERT INTO tournaments (id,name, slug,tier, game_id, league_id, serie_id) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug = EXCLUDED.slug,
     tier = EXCLUDED.tier,
     game_id = EXCLUDED.game_id,
-    serie_id = EXCLUDED.serie_id,
-    league_id = EXCLUDED.league_id
+    league_id = EXCLUDED.league_id,
+    serie_id = EXCLUDED.serie_id
 `
 
 type InsertToTournamentsParams struct {
@@ -196,8 +196,8 @@ type InsertToTournamentsParams struct {
 	Slug     pgtype.Text
 	Tier     pgtype.Int4
 	GameID   int32
-	SerieID  int32
 	LeagueID int32
+	SerieID  int32
 }
 
 func (q *Queries) InsertToTournaments(ctx context.Context, arg InsertToTournamentsParams) error {
@@ -207,8 +207,8 @@ func (q *Queries) InsertToTournaments(ctx context.Context, arg InsertToTournamen
 		arg.Slug,
 		arg.Tier,
 		arg.GameID,
-		arg.SerieID,
 		arg.LeagueID,
+		arg.SerieID,
 	)
 	return err
 }
