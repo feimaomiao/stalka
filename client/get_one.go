@@ -245,7 +245,7 @@ func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 // @param match - the match to check.
 func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 	if match.WinnerType != "Team" {
-		client.Logger.Infof("Match %d is not a team match", match.ID)
+		client.Logger.Infof("Match %d is not a team match, but is a %s match", match.ID, match.WinnerType)
 		return
 	}
 	for _, opponent := range match.Opponents {
@@ -308,6 +308,7 @@ func (client *PandaClient) ExistCheck(id int, flag GetChoice) (bool, error) {
 		dbResult, err = client.DBConnector.MatchExist(client.Ctx, id32)
 	case FlagTeam:
 		dbResult, err = client.DBConnector.TeamExist(client.Ctx, id32)
+	// this would never happen as we vet the flags before calling
 	default:
 		client.Logger.Error("Invalid flag")
 		return false, fmt.Errorf("invalid flag: %d", flag)

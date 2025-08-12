@@ -1,12 +1,17 @@
 package client
 
 import (
+	"fmt"
+	"math"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/feimaomiao/stalka/dbtypes"
 	"github.com/feimaomiao/stalka/pandatypes"
 	"github.com/nbio/st"
+	"github.com/pashagolub/pgxmock/v4"
 	"go.uber.org/zap"
 )
 
@@ -316,4 +321,144 @@ func TestGetChoiceConstants(t *testing.T) {
 	st.Expect(t, FlagTournament, GetChoice(3))
 	st.Expect(t, FlagMatch, GetChoice(4))
 	st.Expect(t, FlagTeam, GetChoice(5))
+}
+
+func TestExistCheck(t *testing.T) {
+	//create logger
+	logger := zap.NewNop().Sugar()
+	mockDB, err := pgxmock.NewPool()
+	st.Assert(t, err, nil)
+	defer mockDB.Close()
+	mockQueries := dbtypes.New(mockDB)
+
+	client := &PandaClient{
+		BaseURL:     "",
+		Pandasecret: "",
+		Logger:      logger,
+		HTTPClient:  &http.Client{},
+		DBConnector: mockQueries,
+		Run:         0,
+		Ctx:         t.Context(),
+	}
+	// this should fail
+	val, err := client.ExistCheck(0, GetChoice(1000))
+	st.Reject(t, err, nil)
+	st.Expect(t, val, false)
+	// this also should fail due to int out of range
+	val, err = client.ExistCheck(math.MaxInt32+10, GetChoice(1))
+	st.Reject(t, err, nil)
+	st.Expect(t, val, false)
+
+	expectedArgs := int32(1)
+
+	//this should fail
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnError(fmt.Errorf("some error"))
+	val, err = client.ExistCheck(1, GetChoice(0))
+	st.Reject(t, err, nil)
+	st.Expect(t, val, false)
+
+	mockDB.ExpectQuery(`SELECT COUNT`).
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
+
+	// this should pass
+	val, err = client.ExistCheck(1, GetChoice(0))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, true)
+
+	// this should also pass
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))
+
+	val, err = client.ExistCheck(1, GetChoice(0))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, false)
+
+	// check league existence
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))
+
+	val, err = client.ExistCheck(1, GetChoice(1))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, false)
+
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
+
+	val, err = client.ExistCheck(1, GetChoice(1))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, true)
+
+	// check series existence
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))
+
+	val, err = client.ExistCheck(1, GetChoice(2))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, false)
+
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
+
+	val, err = client.ExistCheck(1, GetChoice(2))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, true)
+
+	// check tournament existence
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))
+
+	val, err = client.ExistCheck(1, GetChoice(3))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, false)
+
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
+
+	val, err = client.ExistCheck(1, GetChoice(3))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, true)
+
+	// check match existence
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))
+
+	val, err = client.ExistCheck(1, GetChoice(4))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, false)
+
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
+
+	val, err = client.ExistCheck(1, GetChoice(4))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, true)
+
+	// check team existence
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))
+
+	val, err = client.ExistCheck(1, GetChoice(5))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, false)
+
+	mockDB.ExpectQuery("SELECT COUNT").
+		WithArgs(expectedArgs).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
+
+	val, err = client.ExistCheck(1, GetChoice(5))
+	st.Assert(t, err, nil)
+	st.Expect(t, val, true)
 }
