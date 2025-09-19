@@ -314,7 +314,7 @@ func (client *PandaClient) ExistCheck(id int, flag GetChoice) (bool, error) {
 		return false, fmt.Errorf("invalid flag: %d", flag)
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		client.Logger.Error("Error checking if entity exists: %v", err)
+		client.Logger.Errorf("Error checking if entity exists: %v", err)
 		return false, err
 	}
 	if dbResult == 0 {

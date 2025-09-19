@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -10,9 +11,10 @@ import (
 
 	"github.com/feimaomiao/stalka/dbtypes"
 	"github.com/feimaomiao/stalka/pandatypes"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nbio/st"
 	"github.com/pashagolub/pgxmock/v4"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 )
 
 func TestFlagToString(t *testing.T) {
@@ -184,7 +186,7 @@ func TestGetDependency(t *testing.T) {
 
 func TestUnmarshalByFlag(t *testing.T) {
 	client := &PandaClient{
-		Logger: zap.NewNop().Sugar(),
+		Logger: zaptest.NewLogger(t).Sugar(),
 	}
 
 	t.Run("Unmarshal Game", func(t *testing.T) {
@@ -325,7 +327,7 @@ func TestGetChoiceConstants(t *testing.T) {
 
 func TestExistCheck(t *testing.T) {
 	//create logger
-	logger := zap.NewNop().Sugar()
+	logger := zaptest.NewLogger(t).Sugar()
 	mockDB, err := pgxmock.NewPool()
 	st.Assert(t, err, nil)
 	defer mockDB.Close()
@@ -461,4 +463,84 @@ func TestExistCheck(t *testing.T) {
 	val, err = client.ExistCheck(1, GetChoice(5))
 	st.Assert(t, err, nil)
 	st.Expect(t, val, true)
+}
+
+func TestCheckTeam(t *testing.T) {
+	//create logger
+	logger := zaptest.NewLogger(t).Sugar()
+	mockDB, err := pgxmock.NewPool()
+	st.Assert(t, err, nil)
+	defer mockDB.Close()
+	mockQueries := dbtypes.New(mockDB)
+
+	client := &PandaClient{
+		BaseURL:     "",
+		Pandasecret: "",
+		Logger:      logger,
+		HTTPClient:  &http.Client{},
+		DBConnector: mockQueries,
+		Run:         0,
+		Ctx:         t.Context(),
+	}
+
+	//setup MatchLike material by opening static/fetch_data/matches.json
+	matchData, err := os.ReadFile("../static/fetch_data/matches.json")
+	st.Assert(t, err, nil)
+	pdDataLike, err := client.unmarshalByFlag(matchData, FlagMatch)
+	st.Assert(t, err, nil)
+	st.Reject(t, pdDataLike, nil)
+	match, ok := pdDataLike.(pandatypes.MatchLike)
+	st.Assert(t, ok, true)
+	st.Reject(t, match, nil)
+	//we first run the test where the winner type is not a team
+	match.WinnerType = "Player"
+	// this has no outputs
+	client.checkTeam(match)
+	r := recover()
+	st.Expect(t, r, nil)
+	match, ok = pdDataLike.(pandatypes.MatchLike)
+	st.Assert(t, ok, true)
+	st.Reject(t, match, nil)
+
+	// we first set two cases where the request errors
+	cancelContext, cancel := context.WithCancel(context.Background())
+	client.Ctx = cancelContext
+	// the first case fails because the client.ExistCheck fails (out of range)
+	match.Opponents[0].Opponent.ID = math.MaxInt32 + 1
+	client.checkTeam(match)
+	r = recover()
+	st.Expect(t, r, nil)
+	match.Opponents[0].Opponent.ID = 1
+
+	mockDB.ExpectQuery("SELECT COUNT").WithArgs(int32(1)).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
+	mockDB.ExpectQuery("SELECT COUNT").WithArgs(int32(match.Opponents[1].Opponent.ID)).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))
+	client.checkTeam(match)
+	cancel()
+	r = recover()
+	st.Expect(t, r, nil)
+	st.Expect(t, mockDB.ExpectationsWereMet(), nil)
+
+	client.Ctx = context.Background()
+	match = pdDataLike.(pandatypes.MatchLike)
+	mockDB.ExpectQuery("SELECT COUNT").WithArgs(int32(1)).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
+	mockDB.ExpectQuery("SELECT COUNT").WithArgs(int32(match.Opponents[1].Opponent.ID)).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))
+	mockDB.ExpectExec("INSERT INTO teams").
+		WithArgs(
+			int32(match.Opponents[1].Opponent.ID),
+			match.Opponents[1].Opponent.Name,
+			pgtype.Text{String: match.Opponents[1].Opponent.Slug, Valid: match.Opponents[1].Opponent.Slug != ""},
+			pgtype.Text{String: match.Opponents[1].Opponent.Acronym,
+				Valid: match.Opponents[1].Opponent.Acronym != ""},
+			pgtype.Text{String: match.Opponents[1].Opponent.ImageURL, Valid: match.Opponents[1].Opponent.ImageURL != ""},
+			int32(match.Videogame.ID)).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	t.Log(match.Opponents)
+	client.checkTeam(match)
+	r = recover()
+	st.Expect(t, r, nil)
+	st.Expect(t, mockDB.ExpectationsWereMet(), nil)
 }

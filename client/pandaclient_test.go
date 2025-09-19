@@ -8,14 +8,14 @@ import (
 	"github.com/feimaomiao/stalka/dbtypes"
 	"github.com/h2non/gock"
 	"github.com/nbio/st"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 )
 
 // test the makerequest function with the gock library
 func TestMakeRequest(t *testing.T) {
 	// create mock panda client
 	client := &PandaClient{
-		Logger:      zap.NewNop().Sugar(),
+		Logger:      zaptest.NewLogger(t).Sugar(),
 		BaseURL:     "https://api.pandascore.io",
 		Pandasecret: "fakesecret",
 		HTTPClient:  &http.Client{},
@@ -53,7 +53,7 @@ func TestMakeRequestError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// create mock panda client
 	client := &PandaClient{
-		Logger: zap.NewNop().Sugar(),
+		Logger: zaptest.NewLogger(t).Sugar(),
 		// url.Parse fails when baseurl is not properly formatted
 		BaseURL:     "#$%^&*($#$%%^(",
 		Pandasecret: "fakesecret",
