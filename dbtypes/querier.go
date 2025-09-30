@@ -10,6 +10,9 @@ import (
 
 type Querier interface {
 	GameExist(ctx context.Context, id int32) (int64, error)
+	GetAllGames(ctx context.Context) ([]Game, error)
+	GetLeaguesByGameID(ctx context.Context, gameID int32) ([]GetLeaguesByGameIDRow, error)
+	GetSeriesByGameID(ctx context.Context, gameID int32) ([]Series, error)
 	InsertToGames(ctx context.Context, arg InsertToGamesParams) error
 	InsertToLeagues(ctx context.Context, arg InsertToLeaguesParams) error
 	InsertToMatches(ctx context.Context, arg InsertToMatchesParams) error

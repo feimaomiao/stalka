@@ -22,6 +22,98 @@ func (q *Queries) GameExist(ctx context.Context, id int32) (int64, error) {
 	return count, err
 }
 
+const getAllGames = `-- name: GetAllGames :many
+SELECT id, name, slug FROM games WHERE (id != 14) ORDER BY id ASC
+`
+
+func (q *Queries) GetAllGames(ctx context.Context) ([]Game, error) {
+	rows, err := q.db.Query(ctx, getAllGames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Game
+	for rows.Next() {
+		var i Game
+		if err := rows.Scan(&i.ID, &i.Name, &i.Slug); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLeaguesByGameID = `-- name: GetLeaguesByGameID :many
+SELECT id, name, slug, image_link, game_id FROM leagues WHERE game_id = $1 ORDER BY name ASC
+`
+
+type GetLeaguesByGameIDRow struct {
+	ID        int32
+	Name      string
+	Slug      pgtype.Text
+	ImageLink pgtype.Text
+	GameID    int32
+}
+
+func (q *Queries) GetLeaguesByGameID(ctx context.Context, gameID int32) ([]GetLeaguesByGameIDRow, error) {
+	rows, err := q.db.Query(ctx, getLeaguesByGameID, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetLeaguesByGameIDRow
+	for rows.Next() {
+		var i GetLeaguesByGameIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.ImageLink,
+			&i.GameID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSeriesByGameID = `-- name: GetSeriesByGameID :many
+SELECT id, name, slug, game_id, league_id FROM series WHERE game_id = $1 ORDER BY name ASC
+`
+
+func (q *Queries) GetSeriesByGameID(ctx context.Context, gameID int32) ([]Series, error) {
+	rows, err := q.db.Query(ctx, getSeriesByGameID, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Series
+	for rows.Next() {
+		var i Series
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.GameID,
+			&i.LeagueID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertToGames = `-- name: InsertToGames :exec
 INSERT INTO games (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,

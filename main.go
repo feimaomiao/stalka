@@ -9,7 +9,7 @@ import (
 
 	"github.com/feimaomiao/stalka/client"
 	"github.com/feimaomiao/stalka/dbtypes"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
 	_ "embed"
@@ -23,7 +23,7 @@ var schema string
 // @param Db - the database connection.
 // @param DbConn - the queries object interacting with the database (sqlc).
 type DatabaseConnector struct {
-	DB     *pgx.Conn
+	DB     *pgxpool.Pool
 	DBConn *dbtypes.Queries
 }
 
@@ -37,7 +37,7 @@ func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error
 		os.Getenv("postgres_user"),
 		os.Getenv("postgres_password"))
 	log.Info("Connecting to database with connection string: ", connStr)
-	db, err := pgx.Connect(ctx, connStr)
+	db, err := pgxpool.New(ctx, connStr)
 	if err != nil {
 		log.Error(err, "Failed to connect to database")
 		return DatabaseConnector{}, err
@@ -71,7 +71,7 @@ func main() {
 	if err != nil {
 		sugar.Fatal(err)
 	}
-	defer database.DB.Close(ctx)
+	defer database.DB.Close()
 
 	// Initialize the PandaClient with the database connector and logger.
 	// The PandaClient will be used to make requests to the Pandascore API.

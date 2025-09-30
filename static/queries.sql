@@ -70,3 +70,16 @@ SELECT COUNT(*) FROM matches WHERE id = $1;
 SELECT COUNT(*) FROM teams WHERE id = $1;
 
 
+-- name: GetAllGames :many
+SELECT id, name, slug FROM games WHERE (id != 14) ORDER BY id ASC;
+
+-- name: GetSeriesByGameID :many
+SELECT id, name, slug, game_id, league_id FROM series WHERE game_id = $1 ORDER BY name ASC;
+
+-- name: GetLeaguesByGameID :many
+SELECT l.*
+FROM LEAGUES l
+LEFT JOIN TOURNAMENTS t ON l.id = t.league_id
+WHERE l.game_id = $1
+GROUP BY l.id, l.name, l.slug, l.game_id, l.image_link
+ORDER BY MIN(t.tier) ASC, l.name ASC;
