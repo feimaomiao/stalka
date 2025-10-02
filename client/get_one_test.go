@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/feimaomiao/stalka/dbtypes"
 	"github.com/feimaomiao/stalka/pandatypes"
+	"github.com/h2non/gock"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nbio/st"
 	"github.com/pashagolub/pgxmock/v4"
@@ -463,6 +465,312 @@ func TestExistCheck(t *testing.T) {
 	val, err = client.ExistCheck(1, GetChoice(5))
 	st.Assert(t, err, nil)
 	st.Expect(t, val, true)
+}
+
+func TestParseResponse(t *testing.T) {
+	logger := zaptest.NewLogger(t).Sugar()
+	mockDB, err := pgxmock.NewPool()
+	st.Assert(t, err, nil)
+	defer mockDB.Close()
+	mockQueries := dbtypes.New(mockDB)
+
+	client := &PandaClient{
+		BaseURL:     "",
+		Pandasecret: "",
+		Logger:      logger,
+		HTTPClient:  &http.Client{},
+		DBConnector: mockQueries,
+		Run:         0,
+		Ctx:         context.Background(),
+	}
+
+	t.Run("Success - ParseResponse for League with existing game", func(t *testing.T) {
+		leagueData, err := os.ReadFile("../static/fetch_data/leagues.json")
+		st.Assert(t, err, nil)
+
+		// Mock GameExist to return that game exists
+		mockDB.ExpectQuery("SELECT COUNT").
+			WithArgs(int32(1)). // videogame.id from leagues.json
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))
+
+		result, err := client.ParseResponse(leagueData, FlagLeague)
+		st.Expect(t, err, nil)
+		st.Reject(t, result, nil)
+
+		leagueResult, ok := result.(pandatypes.LeagueLike)
+		st.Expect(t, ok, true)
+		st.Expect(t, leagueResult.ID, 289)
+	})
+
+	t.Run("Success - ParseResponse for Series with missing league", func(t *testing.T) {
+		seriesData, err := os.ReadFile("../static/fetch_data/series.json")
+		st.Assert(t, err, nil)
+
+		seriesResult, err := client.unmarshalByFlag(seriesData, FlagSeries)
+		st.Assert(t, err, nil)
+		series, ok := seriesResult.(pandatypes.SeriesLike)
+		st.Assert(t, ok, true)
+
+		// Mock LeagueExist to return false (league doesn't exist)
+		mockDB.ExpectQuery("SELECT COUNT").
+			WithArgs(int32(series.LeagueID)).
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(0)))
+
+		// Since league doesn't exist, we expect GetOne to fail with MakeRequest error
+		result, err := client.ParseResponse(seriesData, FlagSeries)
+		st.Reject(t, err, nil)
+		st.Expect(t, result, nil)
+	})
+
+	t.Run("Error - ParseResponse with invalid JSON", func(t *testing.T) {
+		badJson := []byte("invalid json")
+
+		result, err := client.ParseResponse(badJson, FlagGame)
+		st.Reject(t, err, nil)
+		st.Expect(t, result, nil)
+	})
+}
+
+func TestEnsureDependencies(t *testing.T) {
+	logger := zaptest.NewLogger(t).Sugar()
+	mockDB, err := pgxmock.NewPool()
+	st.Assert(t, err, nil)
+	defer mockDB.Close()
+	mockQueries := dbtypes.New(mockDB)
+
+	client := &PandaClient{
+		BaseURL:     "",
+		Pandasecret: "",
+		Logger:      logger,
+		HTTPClient:  &http.Client{},
+		DBConnector: mockQueries,
+		Run:         0,
+		Ctx:         context.Background(),
+	}
+
+	t.Run("Success - No dependencies for Game", func(t *testing.T) {
+		game := pandatypes.GameLike{
+			ID:   1,
+			Name: "Counter-Strike 2",
+			Slug: "cs2",
+		}
+
+		err := client.ensureDependencies(game, FlagGame)
+		st.Expect(t, err, nil)
+	})
+
+	t.Run("Success - Dependency exists", func(t *testing.T) {
+		league := pandatypes.LeagueLike{
+			ID:   289,
+			Name: "NA LCS",
+			Videogame: struct {
+				ID             int    `json:"id"`
+				Name           string `json:"name"`
+				CurrentVersion string `json:"current_version"`
+				Slug           string `json:"slug"`
+			}{
+				ID:   1,
+				Name: "LoL",
+				Slug: "lol",
+			},
+		}
+
+		// Mock that the game exists
+		mockDB.ExpectQuery("SELECT COUNT").
+			WithArgs(int32(1)).
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))
+
+		err := client.ensureDependencies(league, FlagLeague)
+		st.Expect(t, err, nil)
+	})
+
+	t.Run("Error - ExistCheck fails", func(t *testing.T) {
+		league := pandatypes.LeagueLike{
+			ID:   289,
+			Name: "NA LCS",
+			Videogame: struct {
+				ID             int    `json:"id"`
+				Name           string `json:"name"`
+				CurrentVersion string `json:"current_version"`
+				Slug           string `json:"slug"`
+			}{
+				ID:   1,
+				Name: "LoL",
+				Slug: "lol",
+			},
+		}
+
+		// Mock ExistCheck error
+		mockDB.ExpectQuery("SELECT COUNT").
+			WithArgs(int32(1)).
+			WillReturnError(fmt.Errorf("database error"))
+
+		err := client.ensureDependencies(league, FlagLeague)
+		st.Reject(t, err, nil)
+	})
+
+	t.Run("Error - Dependency doesn't exist and GetOne fails", func(t *testing.T) {
+		league := pandatypes.LeagueLike{
+			ID:   289,
+			Name: "NA LCS",
+			Videogame: struct {
+				ID             int    `json:"id"`
+				Name           string `json:"name"`
+				CurrentVersion string `json:"current_version"`
+				Slug           string `json:"slug"`
+			}{
+				ID:   1,
+				Name: "LoL",
+				Slug: "lol",
+			},
+		}
+
+		// Mock that game doesn't exist
+		mockDB.ExpectQuery("SELECT COUNT").
+			WithArgs(int32(1)).
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(0)))
+
+		// GetOne will fail because MakeRequest will fail
+		err := client.ensureDependencies(league, FlagLeague)
+		st.Reject(t, err, nil)
+	})
+}
+
+func TestGetOne(t *testing.T) {
+	logger := zaptest.NewLogger(t).Sugar()
+	mockDB, err := pgxmock.NewPool()
+	st.Assert(t, err, nil)
+	defer mockDB.Close()
+	mockQueries := dbtypes.New(mockDB)
+
+	client := &PandaClient{
+		BaseURL:     "https://api.pandascore.io",
+		Pandasecret: "fakesecret",
+		Logger:      logger,
+		HTTPClient:  &http.Client{},
+		DBConnector: mockQueries,
+		Run:         0,
+		Ctx:         context.Background(),
+	}
+
+	t.Run("Error - Invalid flag", func(t *testing.T) {
+		err := client.GetOne(1, GetChoice(999))
+		st.Reject(t, err, nil)
+	})
+
+	t.Run("Error - Non-200 status code", func(t *testing.T) {
+		gock.InterceptClient(client.HTTPClient)
+		defer gock.Off()
+
+		gock.New("https://api.pandascore.io").
+			Get("/videogames/1").
+			Reply(404)
+
+		err := client.GetOne(1, FlagGame)
+		st.Reject(t, err, nil)
+	})
+
+	t.Run("Error - WriteToDB fails", func(t *testing.T) {
+		gock.InterceptClient(client.HTTPClient)
+		defer gock.Off()
+
+		gameData, err := os.ReadFile("../static/fetch_data/videogames.json")
+		st.Assert(t, err, nil)
+
+		gock.New("https://api.pandascore.io").
+			Get("/videogames/34").
+			Reply(200).
+			BodyString(string(gameData))
+
+		// Mock database error
+		mockDB.ExpectExec("INSERT INTO games").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnError(fmt.Errorf("database error"))
+
+		err = client.GetOne(34, FlagGame)
+		st.Reject(t, err, nil)
+	})
+}
+
+func TestWriteMatchesErrorPaths(t *testing.T) {
+	logger := zaptest.NewLogger(t).Sugar()
+	mockDB, err := pgxmock.NewPool()
+	st.Assert(t, err, nil)
+	defer mockDB.Close()
+	mockQueries := dbtypes.New(mockDB)
+
+	client := &PandaClient{
+		BaseURL:     "",
+		Pandasecret: "",
+		Logger:      logger,
+		HTTPClient:  &http.Client{},
+		DBConnector: mockQueries,
+		Run:         0,
+		Ctx:         context.Background(),
+	}
+
+	t.Run("Error - Tournament ExistCheck fails", func(t *testing.T) {
+		matchData, err := os.ReadFile("../static/fetch_data/matches.json")
+		st.Assert(t, err, nil)
+
+		var match pandatypes.MatchLike
+		err = json.Unmarshal(matchData, &match)
+		st.Assert(t, err, nil)
+
+		matches := pandatypes.MatchLikes{match}
+
+		// Mock TournamentExist error
+		mockDB.ExpectQuery("SELECT COUNT").
+			WithArgs(int32(match.TournamentID)).
+			WillReturnError(fmt.Errorf("database error"))
+
+		client.WriteMatches(matches)
+		// Should continue on error, no assertion needed
+	})
+
+	t.Run("Error - Tournament doesn't exist and GetOne fails", func(t *testing.T) {
+		matchData, err := os.ReadFile("../static/fetch_data/matches.json")
+		st.Assert(t, err, nil)
+
+		var match pandatypes.MatchLike
+		err = json.Unmarshal(matchData, &match)
+		st.Assert(t, err, nil)
+
+		matches := pandatypes.MatchLikes{match}
+
+		// Mock that tournament doesn't exist
+		mockDB.ExpectQuery("SELECT COUNT").
+			WithArgs(int32(match.TournamentID)).
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(0)))
+
+		// GetOne will fail because there's no HTTP mock
+		client.WriteMatches(matches)
+		// Should continue on error, no assertion needed
+	})
+
+	t.Run("Error - WriteToDB fails", func(t *testing.T) {
+		matchData, err := os.ReadFile("../static/fetch_data/matches.json")
+		st.Assert(t, err, nil)
+
+		var match pandatypes.MatchLike
+		err = json.Unmarshal(matchData, &match)
+		st.Assert(t, err, nil)
+
+		matches := pandatypes.MatchLikes{match}
+
+		// Mock that tournament exists
+		mockDB.ExpectQuery("SELECT COUNT").
+			WithArgs(int32(match.TournamentID)).
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))
+
+		// Mock WriteToDB error
+		mockDB.ExpectExec("INSERT INTO matches").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnError(fmt.Errorf("database error"))
+
+		client.WriteMatches(matches)
+		// Should continue on error, no assertion needed
+	})
 }
 
 func TestCheckTeam(t *testing.T) {
