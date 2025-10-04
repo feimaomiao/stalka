@@ -65,7 +65,9 @@ func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error
 
 func main() {
 	ctx := context.Background()
-	logger, _ := zap.NewDevelopment()
+	config := zap.NewProductionConfig()
+	config.Level = zap.NewAtomicLevelAt(zap.WarnLevel)
+	logger, _ := config.Build()
 	sugar := logger.Sugar()
 	database, err := Init(ctx, sugar)
 	if err != nil {
