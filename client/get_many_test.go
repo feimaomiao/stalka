@@ -555,7 +555,7 @@ func TestConstants(t *testing.T) {
 	// Test that the constants have the expected values
 	st.Expect(t, sortedBy, "-modified_at")
 	st.Expect(t, Pages, 20)
-	st.Expect(t, SetupPages, 30)
+	st.Expect(t, SetupPages, 50)
 }
 
 func TestGetMatchPageReadError(t *testing.T) {
