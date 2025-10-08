@@ -257,7 +257,7 @@ func (client *PandaClient) GetMatches(setup bool) error {
 		pageCount = Pages
 	}
 	varChan := make(chan pandatypes.ResultMatchLikes, pageCount)
-	for i := 0; i < pageCount; i++ {
+	for i := range pageCount {
 		wg.Add(1)
 		go client.getMatchPage(i, &wg, varChan)
 	}
