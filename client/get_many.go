@@ -239,6 +239,7 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
+	client.Logger.Infof("Got %d %s matches on page %d", len(result), reqStr, page)
 	// channel is bounded to the amount of pages get
 	ch <- pandatypes.ResultMatchLikes{Matches: result, Err: nil}
 }
