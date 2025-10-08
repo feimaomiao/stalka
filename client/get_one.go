@@ -124,7 +124,7 @@ type Dependency struct {
 	name string
 }
 
-// getDependency returns the dependency info for a given entity type.
+// getDependency returns the dependency Debug for a given entity type.
 func (client *PandaClient) getDependency(result pandatypes.PandaDataLike, flag GetChoice) *Dependency {
 	switch flag {
 	case FlagLeague:
@@ -178,7 +178,7 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 		client.Logger.Error("Error converting flag to string: %v", err)
 		return err
 	}
-	client.Logger.Infof("Getting %s %d", searchString, id)
+	client.Logger.Debugf("Getting %s %d", searchString, id)
 	resp, err := client.MakeRequest([]string{searchString, strconv.Itoa(id)}, nil)
 	if err != nil {
 		client.Logger.Error("Error making request to Pandascore API: %v", err)
@@ -224,7 +224,7 @@ func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 				continue
 			}
 		}
-		client.Logger.Infof("Writing match %s", match.Name)
+		client.Logger.Debugf("Writing match %s", match.Name)
 		row, success := match.ToRow().(pandatypes.MatchRow)
 		if !success {
 			client.Logger.Errorf("Error converting match row to match row (??), %v", row)
@@ -245,7 +245,7 @@ func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 // @param match - the match to check.
 func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 	if match.WinnerType != "Team" {
-		client.Logger.Infof("Match %d is not a team match, but is a %s match", match.ID, match.WinnerType)
+		client.Logger.Debugf("Match %d is not a team match, but is a %s match", match.ID, match.WinnerType)
 		return
 	}
 	for _, opponent := range match.Opponents {
@@ -255,7 +255,7 @@ func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 			continue
 		}
 		if !exists {
-			client.Logger.Infof("Team %s does not exist", opponent.Opponent.Name)
+			client.Logger.Debugf("Team %s does not exist", opponent.Opponent.Name)
 			err = pandatypes.TeamRow{
 				ID:        opponent.Opponent.ID,
 				GameID:    match.Videogame.ID,
@@ -269,7 +269,7 @@ func (client *PandaClient) checkTeam(match pandatypes.MatchLike) {
 				continue
 			}
 		} else {
-			client.Logger.Infof("Team %s exists", opponent.Opponent.Name)
+			client.Logger.Debugf("Team %s exists", opponent.Opponent.Name)
 		}
 	}
 }

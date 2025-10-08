@@ -60,7 +60,7 @@ func (client *PandaClient) Startup() error {
 	if err != nil {
 		return err
 	}
-	client.Logger.Infof("Done with initial setup, made %d requests", client.Run)
+	client.Logger.Debugf("Done with initial setup, made %d requests", client.Run)
 	return nil
 }
 
@@ -89,7 +89,7 @@ func (client *PandaClient) MakeRequest(paths []string, params map[string]string)
 	}
 	q.Set("per_page", "100")
 	req.URL.RawQuery = q.Encode()
-	client.Logger.Info("Making request to " + req.URL.String())
+	client.Logger.Debug("Making request to " + req.URL.String())
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err

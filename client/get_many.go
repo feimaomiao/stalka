@@ -55,10 +55,10 @@ func (client *PandaClient) UpdateGames() error {
 // GetLeagues gets the first leagues from the Pandascore API.
 // @returns an error if one occurred.
 func (client *PandaClient) GetLeagues(setup bool) error {
+	client.Logger.Info("Getting leagues")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
 	for i := range 15 {
-		client.Logger.Info("Getting leagues page " + strconv.Itoa(i))
 		keys["page"] = strconv.Itoa(i)
 		resp, err := client.MakeRequest([]string{"leagues"}, keys)
 		if err != nil || resp.StatusCode != http.StatusOK {
@@ -181,7 +181,7 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 				continue
 			}
 			if !exists {
-				client.Logger.Infof("Serie %d does not exist, getting", tournament.SerieID)
+				client.Logger.Debugf("Serie %d does not exist, getting", tournament.SerieID)
 				err = client.GetOne(tournament.SerieID, FlagSeries)
 				if err != nil {
 					continue
