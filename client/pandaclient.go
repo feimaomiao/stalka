@@ -60,7 +60,7 @@ func (client *PandaClient) Startup() error {
 	if err != nil {
 		return err
 	}
-	client.Logger.Debugf("Done with initial setup, made %d requests", client.Run)
+	client.Logger.Infof("Done with initial setup, made %d requests", client.Run)
 	return nil
 }
 

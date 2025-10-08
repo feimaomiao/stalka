@@ -16,7 +16,7 @@ import (
 const (
 	sortedBy   = "-modified_at"
 	Pages      = 20
-	SetupPages = 30
+	SetupPages = 50
 )
 
 // UpdateGames updates all games in the database.
@@ -58,7 +58,7 @@ func (client *PandaClient) GetLeagues(setup bool) error {
 	client.Logger.Info("Getting leagues")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
-	for i := range 15 {
+	for i := range 20 {
 		keys["page"] = strconv.Itoa(i)
 		resp, err := client.MakeRequest([]string{"leagues"}, keys)
 		if err != nil || resp.StatusCode != http.StatusOK {
@@ -154,7 +154,7 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 	client.Logger.Info("Getting tournaments")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
-	for i := range 10 {
+	for i := range 20 {
 		keys["page"] = strconv.Itoa(i)
 		client.Logger.Debugf("Getting tournaments page %d", i)
 		resp, err := client.MakeRequest([]string{"tournaments"}, keys)
@@ -257,7 +257,7 @@ func (client *PandaClient) GetMatches(setup bool) error {
 		pageCount = Pages
 	}
 	varChan := make(chan pandatypes.ResultMatchLikes, pageCount)
-	for i := 1; i <= pageCount; i++ {
+	for i := 0; i < pageCount; i++ {
 		wg.Add(1)
 		go client.getMatchPage(i, &wg, varChan)
 	}
