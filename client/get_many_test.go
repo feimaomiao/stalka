@@ -537,7 +537,7 @@ func TestWriteMatches(t *testing.T) {
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		// Since match is finished, expect team checks (2 teams)
+		// Expect team checks for both teams
 		mockDB.ExpectQuery("SELECT COUNT").
 			WithArgs(int32(match.Opponents[0].Opponent.ID)).
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))

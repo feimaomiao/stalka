@@ -235,9 +235,7 @@ func (client *PandaClient) WriteMatches(matches pandatypes.MatchLikes) {
 			client.Logger.Error(err)
 			continue
 		}
-		if row.Finished {
-			client.checkTeam(match)
-		}
+		client.checkTeam(match)
 	}
 }
 
