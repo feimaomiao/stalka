@@ -606,7 +606,7 @@ func (match MatchLike) ToRow() RowLike {
 		Team2ID:           t2ID,
 		Team2Score:        t2Score,
 		Name:              match.Name,
-		ExpectedStartTime: match.BeginAt,
+		ExpectedStartTime: match.ScheduledAt,
 		AmountOfGames:     match.NumberOfGames,
 		ActualGameTime:    actualGT,
 	}
