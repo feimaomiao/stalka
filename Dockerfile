@@ -1,20 +1,27 @@
-# Start with the official Golang image based on Alpine
-FROM golang:alpine
+# syntax=docker/dockerfile:1.7
 
-# Set the working directory inside the container
+# Build stage
+FROM golang:1.25-alpine AS builder
+
 WORKDIR /app
 
-# Copy the go.mod and go.sum files
 COPY go.mod go.sum ./
-
-# Download the Go module dependencies
 RUN go mod download
 
-# Copy the rest of the application code
 COPY . .
 
-# Build the Go application
-RUN go build -o main .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-w -s" -o /out/stalka .
 
-# Command to run the executable
-CMD ["./main"]
+# Runtime stage
+FROM alpine:3.21
+
+RUN apk --no-cache add ca-certificates tzdata \
+    && addgroup -S app && adduser -S -G app -u 10001 app
+
+WORKDIR /app
+
+COPY --from=builder /out/stalka /app/stalka
+
+USER app
+
+ENTRYPOINT ["/app/stalka"]
