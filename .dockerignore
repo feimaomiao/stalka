@@ -1,0 +1,15 @@
+.git
+.github
+.vscode
+.serena
+.claude
+.env
+.DS_Store
+data
+lcov.info
+Dockerfile
+.dockerignore
+README.md
+LICENSE
+docker-compose.yml
+docker-compose.override.yml
