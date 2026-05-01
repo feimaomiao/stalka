@@ -8,6 +8,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/feimaomiao/stalka/dbtypes"
 	"github.com/feimaomiao/stalka/pandatypes"
 	// loads .env file automatically.
 	_ "github.com/joho/godotenv/autoload"
@@ -311,5 +312,66 @@ func (client *PandaClient) GetTeams(setup bool) error {
 			break
 		}
 	}
+	return nil
+}
+
+// GetLives polls the /lives endpoint and updates the is_live flag for all matches.
+// Games in the response have is_live=true; games not in the response have is_live=false.
+func (client *PandaClient) GetLives() error {
+	client.Logger.Info("Getting live matches")
+
+	// Fetch /lives endpoint
+	resp, err := client.MakeRequest([]string{"matches", "lives"}, nil)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		client.Logger.Errorf("Error making request to Pandascore API: %v", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		client.Logger.Errorf("Error reading response: %v", err)
+		return err
+	}
+
+	var result pandatypes.MatchLikes
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		client.Logger.Errorf("Error unmarshalling response: %v", err)
+		return err
+	}
+
+	client.Logger.Infof("Got %d live matches", len(result))
+
+	// Write live matches to DB
+	client.WriteMatches(result)
+
+	// Extract IDs of live matches
+	var liveIDs []int32
+	for _, match := range result {
+		liveIDs = append(liveIDs, int32(match.ID))
+	}
+
+	// Update is_live for live matches
+	if len(liveIDs) > 0 {
+		err = client.DBConnector.UpdateMatchesIsLiveByIDs(client.Ctx, dbtypes.UpdateMatchesIsLiveByIDsParams{
+			IsLive:  true,
+			Column2: liveIDs,
+		})
+		if err != nil {
+			client.Logger.Errorf("Error updating is_live for live matches: %v", err)
+			return err
+		}
+		client.Logger.Debugf("Updated %d matches to is_live=true", len(liveIDs))
+	}
+
+	// Clear is_live for non-live matches
+	err = client.DBConnector.ClearMatchesIsLiveExceptIDs(client.Ctx, liveIDs)
+	if err != nil {
+		client.Logger.Errorf("Error clearing is_live for non-live matches: %v", err)
+		return err
+	}
+	client.Logger.Debug("Cleared is_live for non-live matches")
+
 	return nil
 }

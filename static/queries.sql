@@ -83,3 +83,9 @@ LEFT JOIN TOURNAMENTS t ON l.id = t.league_id
 WHERE l.game_id = $1
 GROUP BY l.id, l.name, l.slug, l.game_id, l.image_link
 ORDER BY MIN(t.tier) ASC, l.name ASC;
+
+-- name: UpdateMatchesIsLiveByIDs :exec
+UPDATE MATCHES SET is_live = $1 WHERE id = ANY($2::int[]);
+
+-- name: ClearMatchesIsLiveExceptIDs :exec
+UPDATE MATCHES SET is_live = false WHERE id != ALL($1::int[]);

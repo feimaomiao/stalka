@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS MATCHES(
     team2_id INT NOT NULL,
     team2_score INT NOT NULL,
     amount_of_games INT NOT NULL,
+    is_live BOOLEAN NOT NULL DEFAULT false,
     game_id INT NOT NULL,
     league_id INT NOT NULL,
     series_id INT NOT NULL,

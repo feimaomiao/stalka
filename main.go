@@ -100,6 +100,18 @@ func main() {
 	setupTicker := time.NewTicker(time.Duration(day) * time.Hour)
 	defer matchTicker.Stop()
 	defer setupTicker.Stop()
+	livesTicker := time.NewTicker(5 * time.Minute)
+	defer livesTicker.Stop()
+	go func() {
+		for range livesTicker.C {
+			sugar.Info("Lives ticker fired")
+			err = client.GetLives()
+			if err != nil {
+				sugar.Error(err)  // log but don't fatal
+			}
+			sugar.Infof("Done with lives update, made %d requests so far", client.Run)
+		}
+	}()
 	go func() {
 		for range matchTicker.C {
 			sugar.Info("Matchticker fired")

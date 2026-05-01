@@ -34,6 +34,7 @@ type Match struct {
 	Team2ID           int32
 	Team2Score        int32
 	AmountOfGames     int32
+	IsLive            bool
 	GameID            int32
 	LeagueID          int32
 	SeriesID          int32

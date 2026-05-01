@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearMatchesIsLiveExceptIDs = `-- name: ClearMatchesIsLiveExceptIDs :exec
+UPDATE MATCHES SET is_live = false WHERE id != ALL($1::int[])
+`
+
+func (q *Queries) ClearMatchesIsLiveExceptIDs(ctx context.Context, dollar_1 []int32) error {
+	_, err := q.db.Exec(ctx, clearMatchesIsLiveExceptIDs, dollar_1)
+	return err
+}
+
 const gameExist = `-- name: GameExist :one
 SELECT COUNT(*) FROM games WHERE id = $1
 `
@@ -355,4 +364,18 @@ func (q *Queries) TournamentExist(ctx context.Context, id int32) (int64, error) 
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const updateMatchesIsLiveByIDs = `-- name: UpdateMatchesIsLiveByIDs :exec
+UPDATE MATCHES SET is_live = $1 WHERE id = ANY($2::int[])
+`
+
+type UpdateMatchesIsLiveByIDsParams struct {
+	IsLive  bool
+	Column2 []int32
+}
+
+func (q *Queries) UpdateMatchesIsLiveByIDs(ctx context.Context, arg UpdateMatchesIsLiveByIDsParams) error {
+	_, err := q.db.Exec(ctx, updateMatchesIsLiveByIDs, arg.IsLive, arg.Column2)
+	return err
 }
