@@ -18,6 +18,8 @@ import (
 //go:embed static/schema.sql
 var schema string
 
+const LivesPollInterval = 5 * time.Minute
+
 // DatabaseConnector is a struct that holds the database connection and the dbtypes.Queries object.
 // It is used to interact with the database.
 // @param Db - the database connection.
@@ -63,7 +65,7 @@ func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error
 	}, nil
 }
 
-func main() {
+func main() { //nolint:gocognit,funlen
 	ctx := context.Background()
 	config := zap.NewProductionConfig()
 	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
@@ -100,14 +102,14 @@ func main() {
 	setupTicker := time.NewTicker(time.Duration(day) * time.Hour)
 	defer matchTicker.Stop()
 	defer setupTicker.Stop()
-	livesTicker := time.NewTicker(5 * time.Minute)
+	livesTicker := time.NewTicker(LivesPollInterval)
 	defer livesTicker.Stop()
 	go func() {
 		for range livesTicker.C {
 			sugar.Info("Lives ticker fired")
 			err = client.GetLives()
 			if err != nil {
-				sugar.Error(err)  // log but don't fatal
+				sugar.Error(err) // log but don't fatal
 			}
 			sugar.Infof("Done with lives update, made %d requests so far", client.Run)
 		}

@@ -431,7 +431,7 @@ func TestGetMatches(t *testing.T) {
 				WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))
 
 			mockDB.ExpectExec("INSERT INTO matches").
-				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 				WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		}
 
@@ -536,7 +536,7 @@ func TestWriteMatches(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))
 
 		mockDB.ExpectExec("INSERT INTO matches").
-			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		// Expect team checks for both teams
@@ -603,7 +603,7 @@ func TestGetMatchPageReadError(t *testing.T) {
 func TestGetLives(t *testing.T) {
 	ctx := context.Background()
 
-	// Mock the /lives endpoint response
+	// Mock the /matches/running endpoint response (flat MatchLike array).
 	livesResponse := []byte(`[
 		{
 			"id": 1,
@@ -668,7 +668,7 @@ func TestGetLives(t *testing.T) {
 	gock.InterceptClient(client.HTTPClient)
 	defer gock.Off()
 	gock.New("https://api.pandascore.co").
-		Get("/matches/lives/").
+		Get("/matches/running/").
 		MatchHeader("Authorization", "Bearer test_secret").
 		Reply(200).
 		Body(bytes.NewReader(livesResponse))

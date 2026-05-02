@@ -27,7 +27,7 @@ INSERT INTO tournaments (id,name, slug,tier, game_id, league_id, serie_id) VALUE
     serie_id = EXCLUDED.serie_id;
 
 -- name: InsertToMatches :exec
-INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO UPDATE SET
+INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id, stream_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug = EXCLUDED.slug,
     finished = EXCLUDED.finished,
@@ -41,7 +41,8 @@ INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_
     game_id = EXCLUDED.game_id,
     league_id = EXCLUDED.league_id,
     series_id = EXCLUDED.series_id,
-    tournament_id = EXCLUDED.tournament_id;
+    tournament_id = EXCLUDED.tournament_id,
+    stream_url = EXCLUDED.stream_url;
 
 -- name: InsertToTeams :exec
 INSERT INTO teams (id, name, slug, acronym, image_link, game_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET

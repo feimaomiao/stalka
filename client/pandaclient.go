@@ -21,6 +21,11 @@ const (
 	FlagTeam
 )
 
+const (
+	seriesEndpoint  = "series"
+	matchesEndpoint = "matches"
+)
+
 // PandaClient is a client for the Pandascore API.
 type PandaClient struct {
 	BaseURL     string
@@ -59,6 +64,12 @@ func (client *PandaClient) Startup() error {
 	err = client.GetMatches(true)
 	if err != nil {
 		return err
+	}
+	// Prime the is_live flag immediately so the UI doesn't have to wait for
+	// the first livesTicker tick. A failure here shouldn't block startup —
+	// the ticker will retry every LivesPollInterval.
+	if liveErr := client.GetLives(); liveErr != nil {
+		client.Logger.Errorf("Initial /lives fetch failed (will retry on ticker): %v", liveErr)
 	}
 	client.Logger.Infof("Done with initial setup, made %d requests", client.Run)
 	return nil

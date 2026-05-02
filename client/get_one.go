@@ -22,11 +22,11 @@ func flagToString(flag GetChoice) (string, error) {
 	case FlagLeague:
 		return "leagues", nil
 	case FlagSeries:
-		return "series", nil
+		return seriesEndpoint, nil
 	case FlagTournament:
 		return "tournaments", nil
 	case FlagMatch:
-		return "matches", nil
+		return matchesEndpoint, nil
 	case FlagTeam:
 		return "teams", nil
 	default:

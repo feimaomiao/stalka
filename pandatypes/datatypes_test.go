@@ -417,6 +417,7 @@ func TestWriteToDB(t *testing.T) {
 				int32(match.LeagueID),
 				int32(match.SerieID),
 				int32(match.TournamentID),
+				pgtype.Text{String: "", Valid: false},
 			).
 			WillReturnResult(
 				pgxmock.NewResult("INSERT", 1),
