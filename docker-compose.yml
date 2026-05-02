@@ -16,10 +16,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  stalka: 
+  stalka:
     build: .
     depends_on:
-      postgres: 
+      postgres:
         condition: service_healthy
     environment:
       pandascore_secret: ${pandascore_secret}

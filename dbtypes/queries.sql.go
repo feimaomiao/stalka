@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearMatchesIsLiveExceptIDs = `-- name: ClearMatchesIsLiveExceptIDs :exec
+UPDATE MATCHES SET is_live = false WHERE id != ALL($1::int[])
+`
+
+func (q *Queries) ClearMatchesIsLiveExceptIDs(ctx context.Context, dollar_1 []int32) error {
+	_, err := q.db.Exec(ctx, clearMatchesIsLiveExceptIDs, dollar_1)
+	return err
+}
+
 const gameExist = `-- name: GameExist :one
 SELECT COUNT(*) FROM games WHERE id = $1
 `
@@ -156,7 +165,7 @@ func (q *Queries) InsertToLeagues(ctx context.Context, arg InsertToLeaguesParams
 }
 
 const insertToMatches = `-- name: InsertToMatches :exec
-INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO UPDATE SET
+INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id, stream_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug = EXCLUDED.slug,
     finished = EXCLUDED.finished,
@@ -170,7 +179,8 @@ INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_
     game_id = EXCLUDED.game_id,
     league_id = EXCLUDED.league_id,
     series_id = EXCLUDED.series_id,
-    tournament_id = EXCLUDED.tournament_id
+    tournament_id = EXCLUDED.tournament_id,
+    stream_url = EXCLUDED.stream_url
 `
 
 type InsertToMatchesParams struct {
@@ -189,6 +199,7 @@ type InsertToMatchesParams struct {
 	LeagueID          int32
 	SeriesID          int32
 	TournamentID      int32
+	StreamURL         pgtype.Text
 }
 
 func (q *Queries) InsertToMatches(ctx context.Context, arg InsertToMatchesParams) error {
@@ -208,6 +219,7 @@ func (q *Queries) InsertToMatches(ctx context.Context, arg InsertToMatchesParams
 		arg.LeagueID,
 		arg.SeriesID,
 		arg.TournamentID,
+		arg.StreamURL,
 	)
 	return err
 }
@@ -355,4 +367,18 @@ func (q *Queries) TournamentExist(ctx context.Context, id int32) (int64, error) 
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const updateMatchesIsLiveByIDs = `-- name: UpdateMatchesIsLiveByIDs :exec
+UPDATE MATCHES SET is_live = $1 WHERE id = ANY($2::int[])
+`
+
+type UpdateMatchesIsLiveByIDsParams struct {
+	IsLive  bool
+	Column2 []int32
+}
+
+func (q *Queries) UpdateMatchesIsLiveByIDs(ctx context.Context, arg UpdateMatchesIsLiveByIDsParams) error {
+	_, err := q.db.Exec(ctx, updateMatchesIsLiveByIDs, arg.IsLive, arg.Column2)
+	return err
 }

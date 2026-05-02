@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/url"
 	"time"
 
 	"github.com/feimaomiao/stalka/dbtypes"
@@ -13,6 +14,15 @@ import (
 const (
 	twoTeams = 2
 )
+
+// StreamEntry mirrors a single entry of PandaScore's `streams_list` array.
+type StreamEntry struct {
+	Main     bool   `json:"main"`
+	Language string `json:"language"`
+	EmbedURL string `json:"embed_url"`
+	Official bool   `json:"official"`
+	RawURL   string `json:"raw_url"`
+}
 
 type PandaDataLike interface {
 	ToRow() RowLike
@@ -253,17 +263,11 @@ type MatchLike struct {
 		ModifiedAt time.Time `json:"modified_at"`
 		ImageURL   string    `json:"image_url"`
 	} `json:"league"`
-	GameAdvantage any `json:"game_advantage"`
-	StreamsList   []struct {
-		Main     bool   `json:"main"`
-		Language string `json:"language"`
-		EmbedURL string `json:"embed_url"`
-		Official bool   `json:"official"`
-		RawURL   string `json:"raw_url"`
-	} `json:"streams_list"`
-	EndAt            time.Time `json:"end_at"`
-	VideogameTitle   any       `json:"videogame_title"`
-	Slug             string    `json:"slug"`
+	GameAdvantage    any           `json:"game_advantage"`
+	StreamsList      []StreamEntry `json:"streams_list"`
+	EndAt            time.Time     `json:"end_at"`
+	VideogameTitle   any           `json:"videogame_title"`
+	Slug             string        `json:"slug"`
 	VideogameVersion struct {
 		Name    string `json:"name"`
 		Current bool   `json:"current"`
@@ -576,6 +580,7 @@ type MatchRow struct {
 	LeagueID          int
 	SerieID           int
 	TournamentID      int
+	StreamURL         string
 }
 
 func (match MatchLike) ToRow() RowLike {
@@ -593,6 +598,7 @@ func (match MatchLike) ToRow() RowLike {
 		t2ID = match.Opponents[1].Opponent.ID
 		t2Score = match.Results[1].Score
 	}
+	streamURL := ExtractPrimaryStreamURL(match.StreamsList)
 	return MatchRow{
 		ID:                match.ID,
 		Slug:              match.Slug,
@@ -609,6 +615,7 @@ func (match MatchLike) ToRow() RowLike {
 		ExpectedStartTime: match.ScheduledAt,
 		AmountOfGames:     match.NumberOfGames,
 		ActualGameTime:    actualGT,
+		StreamURL:         streamURL,
 	}
 }
 
@@ -673,6 +680,7 @@ func (row MatchRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 		LeagueID:       leagueID,
 		SeriesID:       serieID,
 		TournamentID:   tournamentID,
+		StreamURL:      pgtype.Text{String: row.StreamURL, Valid: row.StreamURL != ""},
 	})
 	return err
 }
@@ -715,4 +723,33 @@ func (row TeamRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 		GameID:    gameID,
 	})
 	return err
+}
+
+// ExtractPrimaryStreamURL returns the primary stream URL from a PandaScore match response.
+// Priority: main=true stream, then English language, then first entry.
+// Returns empty string if no valid https:// URL is found.
+func ExtractPrimaryStreamURL(streams []StreamEntry) string {
+	for _, s := range streams {
+		if s.Main && isValidHTTPSURL(s.RawURL) {
+			return s.RawURL
+		}
+	}
+	for _, s := range streams {
+		if s.Language == "en" && isValidHTTPSURL(s.RawURL) {
+			return s.RawURL
+		}
+	}
+	if len(streams) > 0 && isValidHTTPSURL(streams[0].RawURL) {
+		return streams[0].RawURL
+	}
+	return ""
+}
+
+// isValidHTTPSURL parses the input and verifies it is an absolute https:// URL with a host.
+func isValidHTTPSURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "https" && u.Host != ""
 }

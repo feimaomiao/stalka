@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	ClearMatchesIsLiveExceptIDs(ctx context.Context, dollar_1 []int32) error
 	GameExist(ctx context.Context, id int32) (int64, error)
 	GetAllGames(ctx context.Context) ([]Game, error)
 	GetLeaguesByGameID(ctx context.Context, gameID int32) ([]League, error)
@@ -24,6 +25,7 @@ type Querier interface {
 	SeriesExist(ctx context.Context, id int32) (int64, error)
 	TeamExist(ctx context.Context, id int32) (int64, error)
 	TournamentExist(ctx context.Context, id int32) (int64, error)
+	UpdateMatchesIsLiveByIDs(ctx context.Context, arg UpdateMatchesIsLiveByIDsParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -8,7 +9,9 @@ import (
 
 	"encoding/json"
 
+	"github.com/feimaomiao/stalka/dbtypes"
 	"github.com/feimaomiao/stalka/pandatypes"
+
 	// loads .env file automatically.
 	_ "github.com/joho/godotenv/autoload"
 )
@@ -103,7 +106,7 @@ func (client *PandaClient) GetSeries(setup bool) error {
 	for i := range 20 {
 		client.Logger.Debugf("Getting series page %d", i)
 		keys["page"] = strconv.Itoa(i)
-		resp, err := client.MakeRequest([]string{"series"}, nil)
+		resp, err := client.MakeRequest([]string{seriesEndpoint}, nil)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
 			return err
@@ -213,7 +216,7 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 	// odd pages are past matches, even pages are upcoming matches
 	pageMap["page"] = strconv.Itoa(page / polarity)
 	client.Logger.Debugf("Getting %s matches page %d", reqStr, pageMap["page"])
-	resp, err := client.MakeRequest([]string{"matches", reqStr}, pageMap)
+	resp, err := client.MakeRequest([]string{matchesEndpoint, reqStr}, pageMap)
 	if err != nil {
 		client.Logger.Errorf("Error making request to Pandascore API %v, %d on request %d", err, resp.StatusCode, page)
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
@@ -311,5 +314,78 @@ func (client *PandaClient) GetTeams(setup bool) error {
 			break
 		}
 	}
+	return nil
+}
+
+// GetLives polls the /matches/running endpoint and updates the is_live flag for all matches.
+// Matches in the response have is_live=true; matches not in the response have is_live=false.
+// We use /matches/running (not /lives) because /lives only contains matches PandaScore's
+// broadcast detector has actively verified — it lags real-time by minutes and misses
+// matches whose streams haven't been picked up. /matches/running flips on as soon as a
+// match enters its scheduled run window.
+func (client *PandaClient) GetLives() error {
+	client.Logger.Info("Getting live matches")
+
+	resp, err := client.MakeRequest([]string{"matches", "running"}, nil)
+	if err != nil {
+		client.Logger.Errorf("Error making request to Pandascore /matches/running: %v", err)
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		client.Logger.Errorf("Pandascore /matches/running returned non-OK status: %d", resp.StatusCode)
+		return fmt.Errorf("pandascore /matches/running status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		client.Logger.Errorf("Error reading response: %v", err)
+		return err
+	}
+
+	var result pandatypes.MatchLikes
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		client.Logger.Errorf("Error unmarshalling response: %v", err)
+		return err
+	}
+
+	client.Logger.Infof("Got %d live matches", len(result))
+
+	// Write live matches to DB (refreshes stream_url etc.)
+	client.WriteMatches(result)
+
+	// Extract IDs of live matches
+	var liveIDs []int32
+	for _, match := range result {
+		id32, convErr := pandatypes.SafeIntToInt32(match.ID)
+		if convErr != nil {
+			client.Logger.Errorf("Error converting match ID %d to int32: %v", match.ID, convErr)
+			continue
+		}
+		liveIDs = append(liveIDs, id32)
+	}
+
+	// Update is_live for live matches
+	if len(liveIDs) > 0 {
+		err = client.DBConnector.UpdateMatchesIsLiveByIDs(client.Ctx, dbtypes.UpdateMatchesIsLiveByIDsParams{
+			IsLive:  true,
+			Column2: liveIDs,
+		})
+		if err != nil {
+			client.Logger.Errorf("Error updating is_live for live matches: %v", err)
+			return err
+		}
+		client.Logger.Debugf("Updated %d matches to is_live=true", len(liveIDs))
+	}
+
+	// Clear is_live for non-live matches
+	err = client.DBConnector.ClearMatchesIsLiveExceptIDs(client.Ctx, liveIDs)
+	if err != nil {
+		client.Logger.Errorf("Error clearing is_live for non-live matches: %v", err)
+		return err
+	}
+	client.Logger.Debug("Cleared is_live for non-live matches")
+
 	return nil
 }

@@ -32,3 +32,5 @@ data
 lcov.info
 
 .vscode/
+.serena/
+stalka
