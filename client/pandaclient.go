@@ -2,8 +2,11 @@ package client
 
 import (
 	"context"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -24,6 +27,13 @@ const (
 const (
 	seriesEndpoint  = "series"
 	matchesEndpoint = "matches"
+)
+
+const (
+	// maxRateLimitAttempts caps how many times a request is sent while
+	// Pandascore keeps answering 429.
+	maxRateLimitAttempts = 6
+	defaultRetryAfter    = 2 * time.Second
 )
 
 // PandaClient is a client for the Pandascore API.
@@ -101,10 +111,35 @@ func (client *PandaClient) MakeRequest(paths []string, params map[string]string)
 	q.Set("per_page", "100")
 	req.URL.RawQuery = q.Encode()
 	client.Logger.Debug("Making request to " + req.URL.String())
-	resp, err := client.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
+	for attempt := 1; ; attempt++ {
+		resp, doErr := client.HTTPClient.Do(req)
+		if doErr != nil {
+			return nil, doErr
+		}
+		client.Run++
+		if resp.StatusCode != http.StatusTooManyRequests || attempt >= maxRateLimitAttempts {
+			return resp, nil
+		}
+		// Pandascore enforces a short burst limit on top of the hourly quota and
+		// answers with Retry-After. Concurrent page fetches all trip it at once,
+		// so wait it out (plus jitter to spread the retries) instead of failing.
+		_ = resp.Body.Close()
+		wait := retryAfter(resp.Header.Get("Retry-After"))
+		client.Logger.Warnf("Rate limited on %s, retrying in %s (attempt %d)", req.URL.Path, wait, attempt)
+		select {
+		case <-client.Ctx.Done():
+			return nil, client.Ctx.Err()
+		case <-time.After(wait):
+		}
 	}
-	client.Run++
-	return resp, nil
+}
+
+// retryAfter parses a Retry-After header in seconds and adds up to the same
+// amount again as jitter, falling back to defaultRetryAfter.
+func retryAfter(header string) time.Duration {
+	wait := defaultRetryAfter
+	if secs, err := strconv.Atoi(header); err == nil && secs > 0 {
+		wait = time.Duration(secs) * time.Second
+	}
+	return wait + rand.N(wait) //nolint:gosec // jitter only, not security sensitive
 }
