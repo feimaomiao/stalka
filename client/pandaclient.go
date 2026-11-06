@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -43,7 +44,7 @@ type PandaClient struct {
 	Logger      *zap.SugaredLogger
 	HTTPClient  *http.Client
 	DBConnector *dbtypes.Queries
-	Run         int
+	Run         atomic.Int64
 	Ctx         context.Context
 }
 
@@ -81,7 +82,7 @@ func (client *PandaClient) Startup() error {
 	if liveErr := client.GetLives(); liveErr != nil {
 		client.Logger.Errorf("Initial /lives fetch failed (will retry on ticker): %v", liveErr)
 	}
-	client.Logger.Infof("Done with initial setup, made %d requests", client.Run)
+	client.Logger.Infof("Done with initial setup, made %d requests", client.Run.Load())
 	return nil
 }
 
@@ -116,7 +117,7 @@ func (client *PandaClient) MakeRequest(paths []string, params map[string]string)
 		if doErr != nil {
 			return nil, doErr
 		}
-		client.Run++
+		client.Run.Add(1)
 		if resp.StatusCode != http.StatusTooManyRequests || attempt >= maxRateLimitAttempts {
 			return resp, nil
 		}

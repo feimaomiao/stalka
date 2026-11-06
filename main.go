@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/feimaomiao/stalka/client"
@@ -38,7 +39,7 @@ func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error
 	connStr := fmt.Sprintf("host=postgres port=5432 user=%s password=%s dbname=esports sslmode=disable",
 		os.Getenv("postgres_user"),
 		os.Getenv("postgres_password"))
-	log.Info("Connecting to database with connection string: ", connStr)
+	log.Info("Connecting to database")
 	db, err := pgxpool.New(ctx, connStr)
 	if err != nil {
 		log.Error(err, "Failed to connect to database")
@@ -65,7 +66,25 @@ func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error
 	}, nil
 }
 
-func main() { //nolint:gocognit,funlen
+// refresh re-fetches the slow-moving entities. Each ticker goroutine keeps its
+// own error: sharing one would let a tolerated /lives failure trip a Fatal here.
+func refresh(panda *client.PandaClient) error {
+	steps := []func() error{
+		panda.UpdateGames,
+		func() error { return panda.GetLeagues(false) },
+		func() error { return panda.GetSeries(false) },
+		func() error { return panda.GetTeams(false) },
+		func() error { return panda.GetTournaments(false) },
+	}
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func main() {
 	ctx := context.Background()
 	config := zap.NewProductionConfig()
 	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
@@ -87,11 +106,8 @@ func main() { //nolint:gocognit,funlen
 		Logger:      sugar,
 		HTTPClient:  &http.Client{},
 		DBConnector: database.DBConn,
-		Run:         0,
+		Run:         atomic.Int64{},
 		Ctx:         ctx,
-	}
-	if err != nil {
-		sugar.Fatal(err)
 	}
 	err = client.Startup()
 	if err != nil {
@@ -107,47 +123,28 @@ func main() { //nolint:gocognit,funlen
 	go func() {
 		for range livesTicker.C {
 			sugar.Info("Lives ticker fired")
-			err = client.GetLives()
-			if err != nil {
-				sugar.Error(err) // log but don't fatal
+			if liveErr := client.GetLives(); liveErr != nil {
+				sugar.Error(liveErr) // log but don't fatal
 			}
-			sugar.Infof("Done with lives update, made %d requests so far", client.Run)
+			sugar.Infof("Done with lives update, made %d requests so far", client.Run.Load())
 		}
 	}()
 	go func() {
 		for range matchTicker.C {
 			sugar.Info("Matchticker fired")
-			err = client.GetMatches(false)
-			if err != nil {
-				sugar.Fatal(err)
+			if matchErr := client.GetMatches(false); matchErr != nil {
+				sugar.Fatal(matchErr)
 			}
-			sugar.Infof("Done with run, made %d requests so far", client.Run)
+			sugar.Infof("Done with run, made %d requests so far", client.Run.Load())
 		}
 	}()
 	go func() {
 		for range setupTicker.C {
 			sugar.Info("Setupticker fired")
-			err = client.UpdateGames()
-			if err != nil {
-				sugar.Fatal(err)
+			if setupErr := refresh(&client); setupErr != nil {
+				sugar.Fatal(setupErr)
 			}
-			err = client.GetLeagues(false)
-			if err != nil {
-				sugar.Fatal(err)
-			}
-			err = client.GetSeries(false)
-			if err != nil {
-				sugar.Fatal(err)
-			}
-			err = client.GetTeams(false)
-			if err != nil {
-				sugar.Fatal(err)
-			}
-			err = client.GetTournaments(false)
-			if err != nil {
-				sugar.Fatal(err)
-			}
-			sugar.Infof("Done with setup, made %d requests so far", client.Run)
+			sugar.Infof("Done with setup, made %d requests so far", client.Run.Load())
 		}
 	}()
 	for {

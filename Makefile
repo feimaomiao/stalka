@@ -8,6 +8,10 @@ test-verbose:
 	gcov2lcov -infile output.txt -outfile lcov.info
 	rm output.txt
 
+# Real-Postgres tests; needs Docker.
+test-db:
+	go test -race -tags=dbtest ./client/...
+
 lint:
 	golangci-lint run ./...
 
@@ -23,4 +27,4 @@ pre-commit-install:
 pre-commit-run:
 	pre-commit run --all-files
 
-.PHONY: test test-verbose lint fmt fmt-check pre-commit-install pre-commit-run
+.PHONY: test test-verbose test-db lint fmt fmt-check pre-commit-install pre-commit-run

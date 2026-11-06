@@ -1,12 +1,12 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -33,7 +33,6 @@ func TestUpdateGames(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -105,7 +104,6 @@ func TestGetLeagues(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -119,7 +117,7 @@ func TestGetLeagues(t *testing.T) {
 		gock.New("https://api.pandascore.io").
 			Get("/leagues").
 			MatchParam("sort", "-modified_at").
-			MatchParam("page", "0").
+			MatchParam("page", "1").
 			Reply(200).
 			BodyString("[" + string(leagueData) + "]")
 
@@ -157,7 +155,6 @@ func TestGetSeries(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -216,7 +213,6 @@ func TestGetTournaments(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -234,7 +230,7 @@ func TestGetTournaments(t *testing.T) {
 		gock.New("https://api.pandascore.io").
 			Get("/tournaments").
 			MatchParam("sort", "-modified_at").
-			MatchParam("page", "0").
+			MatchParam("page", "1").
 			Reply(200).
 			BodyString("[" + string(tournamentData) + "]")
 
@@ -277,7 +273,6 @@ func TestGetMatchPage(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -290,7 +285,7 @@ func TestGetMatchPage(t *testing.T) {
 
 		gock.New("https://api.pandascore.io").
 			Get("/matches/upcoming").
-			MatchParam("page", "0").
+			MatchParam("page", "1").
 			Reply(200).
 			BodyString("[" + string(matchData) + "]")
 
@@ -317,7 +312,7 @@ func TestGetMatchPage(t *testing.T) {
 
 		gock.New("https://api.pandascore.io").
 			Get("/matches/past").
-			MatchParam("page", "0").
+			MatchParam("page", "1").
 			Reply(200).
 			BodyString("[" + string(matchData) + "]")
 
@@ -393,7 +388,6 @@ func TestGetMatches(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -453,7 +447,6 @@ func TestGetTeams(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -516,7 +509,6 @@ func TestWriteMatches(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -573,7 +565,6 @@ func TestGetMatchPageReadError(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -600,93 +591,214 @@ func TestGetMatchPageReadError(t *testing.T) {
 	})
 }
 
-func TestGetLives(t *testing.T) {
-	ctx := context.Background()
+const livesTestBaseURL = "https://api.pandascore.test/"
 
-	// Mock the /matches/running endpoint response (flat MatchLike array).
-	livesResponse := []byte(`[
-		{
-			"id": 1,
-			"name": "Game 1 Live",
-			"slug": "game-1-live",
-			"finished": false,
-			"scheduled_at": "2026-05-01T14:00:00Z",
-			"begin_at": "2026-05-01T14:00:00Z",
-			"end_at": "2026-05-01T15:00:00Z",
-			"number_of_games": 5,
-			"videogame": {"id": 1, "name": "League of Legends", "slug": "lol"},
-			"league": {"id": 10, "name": "LEC", "slug": "lec"},
-			"serie": {"id": 100, "name": "LEC 2026", "slug": "lec-2026", "league_id": 10},
-			"tournament": {"id": 1000, "name": "LEC 2026 Spring", "slug": "lec-2026-spring"},
-			"opponents": [
-				{"opponent": {"id": 101, "name": "Team 1", "slug": "team-1", "acronym": "T1"}},
-				{"opponent": {"id": 102, "name": "Team 2", "slug": "team-2", "acronym": "T2"}}
-			],
-			"results": [
-				{"team_id": 101, "score": 0},
-				{"team_id": 102, "score": 0}
-			]
-		},
-		{
-			"id": 2,
-			"name": "Game 2 Live",
-			"slug": "game-2-live",
-			"finished": false,
-			"scheduled_at": "2026-05-01T15:00:00Z",
-			"begin_at": "2026-05-01T15:00:00Z",
-			"end_at": "2026-05-01T16:00:00Z",
-			"number_of_games": 3,
-			"videogame": {"id": 1, "name": "League of Legends", "slug": "lol"},
-			"league": {"id": 10, "name": "LEC", "slug": "lec"},
-			"serie": {"id": 100, "name": "LEC 2026", "slug": "lec-2026", "league_id": 10},
-			"tournament": {"id": 1000, "name": "LEC 2026 Spring", "slug": "lec-2026-spring"},
-			"opponents": [
-				{"opponent": {"id": 103, "name": "Team 3", "slug": "team-3", "acronym": "T3"}},
-				{"opponent": {"id": 104, "name": "Team 4", "slug": "team-4", "acronym": "T4"}}
-			],
-			"results": [
-				{"team_id": 103, "score": 1},
-				{"team_id": 104, "score": 1}
-			]
-		}
-	]`)
-
-	// Create a minimal mock queries object
-	// In a real scenario, you'd use pgxmock.New() for full DB mocking
-	// For now, test the HTTP parsing and error handling
+func newLivesClient(t *testing.T) (*PandaClient, pgxmock.PgxPoolIface) {
+	t.Helper()
+	mockDB, err := pgxmock.NewPool()
+	st.Assert(t, err, nil)
+	t.Cleanup(mockDB.Close)
 	client := &PandaClient{
-		BaseURL:     "https://api.pandascore.co/",
+		BaseURL:     livesTestBaseURL,
 		Pandasecret: "test_secret",
 		Logger:      zap.NewNop().Sugar(),
 		HTTPClient:  &http.Client{},
-		DBConnector: &dbtypes.Queries{}, // Placeholder; in real tests, use pgxmock
-		Run:         0,
-		Ctx:         ctx,
+		DBConnector: dbtypes.New(mockDB),
+		Ctx:         context.Background(),
 	}
-
-	// Setup gock to mock the /lives request
 	gock.InterceptClient(client.HTTPClient)
-	defer gock.Off()
-	gock.New("https://api.pandascore.co").
-		Get("/matches/running/").
-		MatchHeader("Authorization", "Bearer test_secret").
-		Reply(200).
-		Body(bytes.NewReader(livesResponse))
+	t.Cleanup(gock.Off)
+	return client, mockDB
+}
 
-	// Call GetLives (will fail at DB write, but that's OK for now)
-	// We're primarily testing the HTTP fetch and parsing
-	// Recover from any DB-related panics since DBConnector is mocked
-	defer func() {
-		if r := recover(); r != nil {
-			// Expected: panic from nil DBConnector operations
-			// The key test is that the HTTP request was made successfully
+func TestGetLives(t *testing.T) {
+	const running = `[
+		{"id": 1, "name": "Live 1", "tournament_id": 1000, "number_of_games": 3,
+		 "scheduled_at": "2026-05-01T14:00:00Z"},
+		{"id": 2, "name": "Live 2", "tournament_id": 1000, "number_of_games": 3,
+		 "scheduled_at": "2026-05-01T15:00:00Z"}
+	]`
+
+	t.Run("Success - syncs is_live to the running ids", func(t *testing.T) {
+		client, mockDB := newLivesClient(t)
+		gock.New(livesTestBaseURL).
+			Get("/matches/running/").
+			MatchHeader("Authorization", "Bearer test_secret").
+			Reply(http.StatusOK).
+			BodyString(running)
+		for range 2 {
+			mockDB.ExpectQuery("SELECT COUNT").
+				WithArgs(int32(1000)).
+				WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))
+			mockDB.ExpectExec("INSERT INTO matches").
+				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+					pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+					pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+					pgxmock.AnyArg()).
+				WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		}
-	}()
-	_ = client.GetLives()
+		mockDB.ExpectExec("UPDATE MATCHES SET is_live").
+			WithArgs([]int32{1, 2}).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 2))
 
-	// For this test, we expect an error because DBConnector is not properly mocked
-	// The key is that the HTTP request was made and parsed correctly
-	if !gock.IsDone() {
-		t.Fatalf("HTTP mock not called; GetLives may not be fetching from /lives")
+		st.Expect(t, client.GetLives(), nil)
+		st.Expect(t, gock.IsDone(), true)
+		st.Expect(t, mockDB.ExpectationsWereMet(), nil)
+	})
+
+	// A nil slice reaches Postgres as NULL, which is why this pins the empty
+	// non-nil slice rather than just "the query ran".
+	t.Run("Success - nothing running sends an empty list", func(t *testing.T) {
+		client, mockDB := newLivesClient(t)
+		gock.New(livesTestBaseURL).Get("/matches/running/").Reply(http.StatusOK).BodyString("[]")
+		mockDB.ExpectExec("UPDATE MATCHES SET is_live").
+			WithArgs([]int32{}).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		st.Expect(t, client.GetLives(), nil)
+		st.Expect(t, mockDB.ExpectationsWereMet(), nil)
+	})
+
+	t.Run("Error - non-200 leaves is_live untouched", func(t *testing.T) {
+		client, mockDB := newLivesClient(t)
+		gock.New(livesTestBaseURL).Get("/matches/running/").Reply(http.StatusInternalServerError)
+
+		st.Reject(t, client.GetLives(), nil)
+		st.Expect(t, mockDB.ExpectationsWereMet(), nil)
+	})
+
+	t.Run("Error - sync failure is returned", func(t *testing.T) {
+		client, mockDB := newLivesClient(t)
+		gock.New(livesTestBaseURL).Get("/matches/running/").Reply(http.StatusOK).BodyString("[]")
+		mockDB.ExpectExec("UPDATE MATCHES SET is_live").
+			WithArgs([]int32{}).
+			WillReturnError(io.ErrUnexpectedEOF)
+
+		st.Reject(t, client.GetLives(), nil)
+	})
+}
+
+func TestGetMatchPageTransportError(t *testing.T) {
+	client, _ := newLivesClient(t)
+	gock.New(livesTestBaseURL).Get("/matches/upcoming/").ReplyError(io.ErrUnexpectedEOF)
+
+	var wg sync.WaitGroup
+	ch := make(chan pandatypes.ResultMatchLikes, 1)
+	wg.Add(1)
+	client.getMatchPage(0, &wg, ch)
+	wg.Wait()
+
+	result := <-ch
+	st.Reject(t, result.Err, nil)
+	st.Expect(t, len(result.Matches), 0)
+}
+
+func TestGetMatchPageNon200IsAnError(t *testing.T) {
+	client, _ := newLivesClient(t)
+	gock.New(livesTestBaseURL).Get("/matches/upcoming/").Reply(http.StatusServiceUnavailable)
+
+	var wg sync.WaitGroup
+	ch := make(chan pandatypes.ResultMatchLikes, 1)
+	wg.Add(1)
+	client.getMatchPage(0, &wg, ch)
+	wg.Wait()
+
+	st.Reject(t, (<-ch).Err, nil)
+}
+
+// Pages are 1-indexed: asking for page=0 returns nothing, so a refresh that
+// starts there silently does no work.
+func TestMatchPagesStartAtOne(t *testing.T) {
+	cases := []struct {
+		name     string
+		page     int
+		endpoint string
+		want     string
+	}{
+		{name: "first upcoming", page: 0, endpoint: "/matches/upcoming/", want: "1"},
+		{name: "first past", page: 1, endpoint: "/matches/past/", want: "1"},
+		{name: "second upcoming", page: 2, endpoint: "/matches/upcoming/", want: "2"},
+		{name: "second past", page: 3, endpoint: "/matches/past/", want: "2"},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := newLivesClient(t)
+			gock.New(livesTestBaseURL).
+				Get(tc.endpoint).
+				MatchParam("page", tc.want).
+				Reply(http.StatusOK).
+				BodyString("[]")
+
+			var wg sync.WaitGroup
+			ch := make(chan pandatypes.ResultMatchLikes, 1)
+			wg.Add(1)
+			client.getMatchPage(tc.page, &wg, ch)
+			wg.Wait()
+
+			st.Expect(t, (<-ch).Err, nil)
+			st.Expect(t, gock.IsDone(), true)
+		})
+	}
+}
+
+// Every bulk fetcher must send sort and page, and setup must walk distinct
+// pages instead of re-fetching the first one Pages times.
+func TestBulkFetchersPaginate(t *testing.T) {
+	fetchers := []struct {
+		name     string
+		endpoint string
+		fetch    func(*PandaClient, bool) error
+	}{
+		{name: "leagues", endpoint: "/leagues/", fetch: (*PandaClient).GetLeagues},
+		{name: "series", endpoint: "/series/", fetch: (*PandaClient).GetSeries},
+		{name: "tournaments", endpoint: "/tournaments/", fetch: (*PandaClient).GetTournaments},
+		{name: "teams", endpoint: "/teams/", fetch: (*PandaClient).GetTeams},
+	}
+	for _, fetcher := range fetchers {
+		t.Run(fetcher.name+" refresh reads the first page", func(t *testing.T) {
+			client, _ := newLivesClient(t)
+			gock.New(livesTestBaseURL).
+				Get(fetcher.endpoint).
+				MatchParam("page", "1").
+				MatchParam("sort", sortedBy).
+				Reply(http.StatusOK).
+				BodyString("[]")
+
+			st.Expect(t, fetcher.fetch(client, false), nil)
+			st.Expect(t, gock.IsDone(), true)
+		})
+		t.Run(fetcher.name+" setup walks every page once", func(t *testing.T) {
+			client, _ := newLivesClient(t)
+			for page := firstPage; page < firstPage+Pages; page++ {
+				gock.New(livesTestBaseURL).
+					Get(fetcher.endpoint).
+					MatchParam("page", strconv.Itoa(page)+"$").
+					MatchParam("sort", sortedBy).
+					Reply(http.StatusOK).
+					BodyString("[]")
+			}
+
+			st.Expect(t, fetcher.fetch(client, true), nil)
+			st.Expect(t, gock.IsDone(), true)
+		})
+	}
+}
+
+func TestMakeRequestCountsConcurrentRequests(t *testing.T) {
+	client, _ := newLivesClient(t)
+	const requests = 20
+	gock.New(livesTestBaseURL).Get("/videogames/").Times(requests).Reply(http.StatusOK).BodyString("[]")
+
+	var wg sync.WaitGroup
+	for range requests {
+		wg.Go(func() {
+			resp, err := client.MakeRequest([]string{"videogames"}, nil)
+			if err == nil {
+				_ = resp.Body.Close()
+			}
+		})
+	}
+	wg.Wait()
+
+	st.Expect(t, client.Run.Load(), int64(requests))
 }

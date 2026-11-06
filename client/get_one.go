@@ -184,12 +184,12 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 		client.Logger.Error("Error making request to Pandascore API: %v", err)
 		return err
 	}
+	defer resp.Body.Close()
 	// Check if the response status code is 200 OK
 	if resp.StatusCode != http.StatusOK {
 		client.Logger.Error("Error: received status code %d", resp.StatusCode)
 		return fmt.Errorf("received status code %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -199,6 +199,7 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 	result, err := client.ParseResponse(body, flag)
 	if err != nil {
 		client.Logger.Error("Error parsing response: %v", err)
+		return err
 	}
 
 	err = result.ToRow().WriteToDB(client.Ctx, client.DBConnector)

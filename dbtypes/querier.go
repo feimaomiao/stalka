@@ -9,7 +9,6 @@ import (
 )
 
 type Querier interface {
-	ClearMatchesIsLiveExceptIDs(ctx context.Context, dollar_1 []int32) error
 	GameExist(ctx context.Context, id int32) (int64, error)
 	GetAllGames(ctx context.Context) ([]Game, error)
 	GetLeaguesByGameID(ctx context.Context, gameID int32) ([]League, error)
@@ -23,9 +22,14 @@ type Querier interface {
 	LeagueExist(ctx context.Context, id int32) (int64, error)
 	MatchExist(ctx context.Context, id int32) (int64, error)
 	SeriesExist(ctx context.Context, id int32) (int64, error)
+	// SyncMatchesIsLive sets is_live to true for exactly the given ids. Postgres
+	// writes a new row version for every row an UPDATE matches, even when the value
+	// is unchanged, so the WHERE must skip rows that are already correct. The
+	// upserts above carry the same IS DISTINCT FROM guard for the same reason.
+	// COALESCE matters: pgx sends a nil slice as NULL, and id = ANY(NULL) is NULL.
+	SyncMatchesIsLive(ctx context.Context, liveIds []int32) error
 	TeamExist(ctx context.Context, id int32) (int64, error)
 	TournamentExist(ctx context.Context, id int32) (int64, error)
-	UpdateMatchesIsLiveByIDs(ctx context.Context, arg UpdateMatchesIsLiveByIDsParams) error
 }
 
 var _ Querier = (*Queries)(nil)

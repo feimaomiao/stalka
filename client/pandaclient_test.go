@@ -20,7 +20,6 @@ func TestMakeRequest(t *testing.T) {
 		Pandasecret: "fakesecret",
 		HTTPClient:  &http.Client{},
 		DBConnector: &dbtypes.Queries{},
-		Run:         0,
 		Ctx:         t.Context(),
 	}
 	gock.InterceptClient(client.HTTPClient)
@@ -59,7 +58,6 @@ func TestMakeRequestError(t *testing.T) {
 		Pandasecret: "fakesecret",
 		HTTPClient:  &http.Client{},
 		DBConnector: &dbtypes.Queries{},
-		Run:         0,
 		Ctx:         nil,
 	}
 	// url.Parse fails when baseurl is not properly formatted
