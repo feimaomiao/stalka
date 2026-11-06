@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -19,7 +20,18 @@ import (
 //go:embed static/schema.sql
 var schema string
 
-const LivesPollInterval = 5 * time.Minute
+const (
+	LivesPollInterval = 5 * time.Minute
+	// requestTimeout bounds a whole request. Without it a server that accepts a
+	// connection and never answers blocks its ticker forever, with no error.
+	requestTimeout = 30 * time.Second
+	hoursPerDay    = 24
+	// The hourly and daily runs start offset from the lives poll. Their periods are
+	// multiples of its period, so otherwise all three would fire in the same
+	// instant, and Pandascore's burst limit answers that with 429s.
+	matchTickerOffset = 2 * time.Minute
+	setupTickerOffset = 7 * time.Minute
+)
 
 // DatabaseConnector is a struct that holds the database connection and the dbtypes.Queries object.
 // It is used to interact with the database.
@@ -68,6 +80,19 @@ func Init(ctx context.Context, log *zap.SugaredLogger) (DatabaseConnector, error
 
 // refresh re-fetches the slow-moving entities. Each ticker goroutine keeps its
 // own error: sharing one would let a tolerated /lives failure trip a Fatal here.
+// every runs fn each period, starting one period after offset. Runs never
+// overlap each other: a tick that lands during a run is dropped.
+func every(period, offset time.Duration, fn func()) {
+	go func() {
+		time.Sleep(offset)
+		ticker := time.NewTicker(period)
+		defer ticker.Stop()
+		for range ticker.C {
+			fn()
+		}
+	}()
+}
+
 func refresh(panda *client.PandaClient) error {
 	steps := []func() error{
 		panda.UpdateGames,
@@ -76,12 +101,13 @@ func refresh(panda *client.PandaClient) error {
 		func() error { return panda.GetTeams(false) },
 		func() error { return panda.GetTournaments(false) },
 	}
+	var errs []error
 	for _, step := range steps {
 		if err := step(); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func main() {
@@ -104,49 +130,49 @@ func main() {
 		BaseURL:     "https://api.pandascore.co/",
 		Pandasecret: os.Getenv("pandascore_secret"),
 		Logger:      sugar,
-		HTTPClient:  &http.Client{},
+		HTTPClient:  &http.Client{Timeout: requestTimeout},
 		DBConnector: database.DBConn,
 		Run:         atomic.Int64{},
 		Ctx:         ctx,
 	}
+	// Failures past this point are logged, not fatal: a restart would repeat every
+	// request Startup made and fix nothing, while the tickers keep data moving.
 	err = client.Startup()
 	if err != nil {
-		sugar.Fatal(err)
+		sugar.Errorf("Startup incomplete, the next daily run will repeat it: %v", err)
 	}
-	day := 24
-	matchTicker := time.NewTicker(time.Hour)
-	setupTicker := time.NewTicker(time.Duration(day) * time.Hour)
-	defer matchTicker.Stop()
-	defer setupTicker.Stop()
-	livesTicker := time.NewTicker(LivesPollInterval)
-	defer livesTicker.Stop()
-	go func() {
-		for range livesTicker.C {
-			sugar.Info("Lives ticker fired")
-			if liveErr := client.GetLives(); liveErr != nil {
-				sugar.Error(liveErr) // log but don't fatal
-			}
-			sugar.Infof("Done with lives update, made %d requests so far", client.Run.Load())
+	needsStartup := err != nil
+	every(LivesPollInterval, 0, func() {
+		sugar.Info("Lives ticker fired")
+		if liveErr := client.GetLives(); liveErr != nil {
+			sugar.Error(liveErr)
 		}
-	}()
-	go func() {
-		for range matchTicker.C {
-			sugar.Info("Matchticker fired")
-			if matchErr := client.GetMatches(false); matchErr != nil {
-				sugar.Fatal(matchErr)
-			}
-			sugar.Infof("Done with run, made %d requests so far", client.Run.Load())
+		sugar.Infof("Done with lives update, made %d requests so far", client.Run.Load())
+	})
+	every(time.Hour, matchTickerOffset, func() {
+		sugar.Info("Matchticker fired")
+		if matchErr := client.GetMatches(false); matchErr != nil {
+			sugar.Error(matchErr)
 		}
-	}()
-	go func() {
-		for range setupTicker.C {
-			sugar.Info("Setupticker fired")
-			if setupErr := refresh(&client); setupErr != nil {
-				sugar.Fatal(setupErr)
-			}
-			sugar.Infof("Done with setup, made %d requests so far", client.Run.Load())
+		if reconcileErr := client.ReconcileMatches(); reconcileErr != nil {
+			sugar.Error(reconcileErr)
 		}
-	}()
+		sugar.Infof("Done with run, made %d requests so far", client.Run.Load())
+	})
+	every(hoursPerDay*time.Hour, setupTickerOffset, func() {
+		sugar.Info("Setupticker fired")
+		var setupErr error
+		if needsStartup {
+			setupErr = client.Startup()
+			needsStartup = setupErr != nil
+		} else {
+			setupErr = refresh(&client)
+		}
+		if setupErr != nil {
+			sugar.Error(setupErr)
+		}
+		sugar.Infof("Done with setup, made %d requests so far", client.Run.Load())
+	})
 	for {
 		time.Sleep(time.Hour)
 	}

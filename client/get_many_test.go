@@ -425,7 +425,7 @@ func TestGetMatches(t *testing.T) {
 				WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))
 
 			mockDB.ExpectExec("INSERT INTO matches").
-				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 				WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		}
 
@@ -528,7 +528,7 @@ func TestWriteMatches(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(1)))
 
 		mockDB.ExpectExec("INSERT INTO matches").
-			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		// Expect team checks for both teams
@@ -634,12 +634,12 @@ func TestGetLives(t *testing.T) {
 				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 					pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 					pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-					pgxmock.AnyArg()).
+					pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 				WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		}
-		mockDB.ExpectExec("UPDATE MATCHES SET is_live").
+		mockDB.ExpectQuery("UPDATE MATCHES SET is_live").
 			WithArgs([]int32{1, 2}).
-			WillReturnResult(pgxmock.NewResult("UPDATE", 2))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "is_live"}).AddRow(int32(1), true).AddRow(int32(2), true))
 
 		st.Expect(t, client.GetLives(), nil)
 		st.Expect(t, gock.IsDone(), true)
@@ -651,9 +651,9 @@ func TestGetLives(t *testing.T) {
 	t.Run("Success - nothing running sends an empty list", func(t *testing.T) {
 		client, mockDB := newLivesClient(t)
 		gock.New(livesTestBaseURL).Get("/matches/running/").Reply(http.StatusOK).BodyString("[]")
-		mockDB.ExpectExec("UPDATE MATCHES SET is_live").
+		mockDB.ExpectQuery("UPDATE MATCHES SET is_live").
 			WithArgs([]int32{}).
-			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "is_live"}))
 
 		st.Expect(t, client.GetLives(), nil)
 		st.Expect(t, mockDB.ExpectationsWereMet(), nil)
@@ -661,7 +661,7 @@ func TestGetLives(t *testing.T) {
 
 	t.Run("Error - non-200 leaves is_live untouched", func(t *testing.T) {
 		client, mockDB := newLivesClient(t)
-		gock.New(livesTestBaseURL).Get("/matches/running/").Reply(http.StatusInternalServerError)
+		gock.New(livesTestBaseURL).Get("/matches/running/").Reply(http.StatusForbidden)
 
 		st.Reject(t, client.GetLives(), nil)
 		st.Expect(t, mockDB.ExpectationsWereMet(), nil)
@@ -670,7 +670,7 @@ func TestGetLives(t *testing.T) {
 	t.Run("Error - sync failure is returned", func(t *testing.T) {
 		client, mockDB := newLivesClient(t)
 		gock.New(livesTestBaseURL).Get("/matches/running/").Reply(http.StatusOK).BodyString("[]")
-		mockDB.ExpectExec("UPDATE MATCHES SET is_live").
+		mockDB.ExpectQuery("UPDATE MATCHES SET is_live").
 			WithArgs([]int32{}).
 			WillReturnError(io.ErrUnexpectedEOF)
 
@@ -695,7 +695,7 @@ func TestGetMatchPageTransportError(t *testing.T) {
 
 func TestGetMatchPageNon200IsAnError(t *testing.T) {
 	client, _ := newLivesClient(t)
-	gock.New(livesTestBaseURL).Get("/matches/upcoming/").Reply(http.StatusServiceUnavailable)
+	gock.New(livesTestBaseURL).Get("/matches/upcoming/").Reply(http.StatusForbidden)
 
 	var wg sync.WaitGroup
 	ch := make(chan pandatypes.ResultMatchLikes, 1)

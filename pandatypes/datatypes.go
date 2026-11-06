@@ -11,6 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// PandaScore match statuses that change how a row is written.
+const (
+	MatchStatusFinished = "finished"
+	MatchStatusCanceled = "canceled"
+)
+
 const (
 	twoTeams = 2
 )
@@ -581,28 +587,60 @@ type MatchRow struct {
 	SerieID           int
 	TournamentID      int
 	StreamURL         string
+	Status            string
+	ModifiedAt        time.Time
+	Forfeit           bool
+	WinnerID          int
+}
+
+// IsFinished reports whether the match was actually played to a result. A
+// canceled match can never count, whatever its timestamps say, because a row
+// marked finished is shown with its 0-0 scores as a final result.
+func (match MatchLike) IsFinished() bool {
+	if match.Status == MatchStatusCanceled {
+		return false
+	}
+	return match.Status == MatchStatusFinished || !match.EndAt.IsZero()
+}
+
+// opponentSlot returns the id and score for one side of the match. Each side
+// fills in on its own: a bracket match reads "X vs TBD" until the other team is
+// known, and X must still be findable by team filters in the meantime.
+func (match MatchLike) opponentSlot(index int) (int, int) {
+	if index >= len(match.Opponents) || len(match.Opponents) > twoTeams {
+		return 0, 0
+	}
+	id := match.Opponents[index].Opponent.ID
+	for _, result := range match.Results {
+		if result.TeamID == id {
+			return id, result.Score
+		}
+	}
+	// Player matches key their results by player_id, so fall back to position.
+	if index < len(match.Results) {
+		return id, match.Results[index].Score
+	}
+	return id, 0
 }
 
 func (match MatchLike) ToRow() RowLike {
 	actualGT := 0.0
-	if match.EndAt != (time.Time{}) {
+	// Canceled and malformed matches can lack either, and a float column would
+	// happily store the infinity that dividing by zero games produces.
+	if !match.EndAt.IsZero() && !match.BeginAt.IsZero() && match.NumberOfGames > 0 {
 		actualGT = match.EndAt.Sub(match.BeginAt).Seconds() / float64(match.NumberOfGames)
 	}
-	t1ID := 0
-	t1Score := 0
-	t2ID := 0
-	t2Score := 0
-	if len(match.Opponents) == twoTeams {
-		t1ID = match.Opponents[0].Opponent.ID
-		t1Score = match.Results[0].Score
-		t2ID = match.Opponents[1].Opponent.ID
-		t2Score = match.Results[1].Score
-	}
+	t1ID, t1Score := match.opponentSlot(0)
+	t2ID, t2Score := match.opponentSlot(1)
 	streamURL := ExtractPrimaryStreamURL(match.StreamsList)
 	return MatchRow{
 		ID:                match.ID,
 		Slug:              match.Slug,
-		Finished:          match.EndAt != time.Time{},
+		Finished:          match.IsFinished(),
+		Status:            match.Status,
+		ModifiedAt:        match.ModifiedAt,
+		Forfeit:           match.Forfeit,
+		WinnerID:          match.WinnerID,
 		GameID:            match.Videogame.ID,
 		LeagueID:          match.League.ID,
 		SerieID:           match.Serie.ID,
@@ -660,6 +698,10 @@ func (row MatchRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 	if err != nil {
 		return err
 	}
+	winnerID, err := SafeIntToInt32(row.WinnerID)
+	if err != nil {
+		return err
+	}
 	err = db.InsertToMatches(ctx, dbtypes.InsertToMatchesParams{
 		ID:       id,
 		Name:     row.Name,
@@ -681,6 +723,14 @@ func (row MatchRow) WriteToDB(ctx context.Context, db *dbtypes.Queries) error {
 		SeriesID:       serieID,
 		TournamentID:   tournamentID,
 		StreamURL:      pgtype.Text{String: row.StreamURL, Valid: row.StreamURL != ""},
+		Status:         pgtype.Text{String: row.Status, Valid: row.Status != ""},
+		ModifiedAt: pgtype.Timestamp{
+			Time:             row.ModifiedAt,
+			Valid:            !row.ModifiedAt.IsZero(),
+			InfinityModifier: 0,
+		},
+		Forfeit:  row.Forfeit,
+		WinnerID: winnerID,
 	})
 	return err
 }

@@ -12,14 +12,25 @@ type Querier interface {
 	GameExist(ctx context.Context, id int32) (int64, error)
 	GetAllGames(ctx context.Context) ([]Game, error)
 	GetLeaguesByGameID(ctx context.Context, gameID int32) ([]League, error)
+	// GetMatchesToReconcile lists matches the feeds no longer settle: past their
+	// start, not live, and not in a terminal status. status IS NULL is the backlog
+	// from before the column existed, including rows wrongly marked finished, so it
+	// has no age limit. Other rows get two weeks, so a match postponed indefinitely
+	// can't hold a place in the batch forever.
+	GetMatchesToReconcile(ctx context.Context, limit int32) ([]int32, error)
 	GetSeriesByGameID(ctx context.Context, gameID int32) ([]Series, error)
 	InsertToGames(ctx context.Context, arg InsertToGamesParams) error
 	InsertToLeagues(ctx context.Context, arg InsertToLeaguesParams) error
+	// The running feed and the paged lists overlap, so a page fetched moments ago
+	// can carry older data than the row. modified_at stays out of the comparison
+	// below: an upstream touch that changes nothing shown isn't a revision.
 	InsertToMatches(ctx context.Context, arg InsertToMatchesParams) error
 	InsertToSeries(ctx context.Context, arg InsertToSeriesParams) error
 	InsertToTeams(ctx context.Context, arg InsertToTeamsParams) error
 	InsertToTournaments(ctx context.Context, arg InsertToTournamentsParams) error
 	LeagueExist(ctx context.Context, id int32) (int64, error)
+	// MarkMatchRemoved records that PandaScore no longer has this match.
+	MarkMatchRemoved(ctx context.Context, id int32) error
 	MatchExist(ctx context.Context, id int32) (int64, error)
 	SeriesExist(ctx context.Context, id int32) (int64, error)
 	// SyncMatchesIsLive sets is_live to true for exactly the given ids. Postgres
@@ -27,7 +38,9 @@ type Querier interface {
 	// is unchanged, so the WHERE must skip rows that are already correct. The
 	// upserts above carry the same IS DISTINCT FROM guard for the same reason.
 	// COALESCE matters: pgx sends a nil slice as NULL, and id = ANY(NULL) is NULL.
-	SyncMatchesIsLive(ctx context.Context, liveIds []int32) error
+	// Returns the rows it flipped: one that went false has just left the running
+	// feed, so its final state has to be fetched by id.
+	SyncMatchesIsLive(ctx context.Context, liveIds []int32) ([]SyncMatchesIsLiveRow, error)
 	TeamExist(ctx context.Context, id int32) (int64, error)
 	TournamentExist(ctx context.Context, id int32) (int64, error)
 }

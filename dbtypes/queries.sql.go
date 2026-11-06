@@ -81,6 +81,44 @@ func (q *Queries) GetLeaguesByGameID(ctx context.Context, gameID int32) ([]Leagu
 	return items, nil
 }
 
+const getMatchesToReconcile = `-- name: GetMatchesToReconcile :many
+SELECT id FROM MATCHES
+WHERE NOT is_live
+    AND expected_start_time < NOW() - INTERVAL '2 hours'
+    AND (
+        status IS NULL
+        OR (status NOT IN ('finished', 'canceled', 'removed')
+            AND expected_start_time > NOW() - INTERVAL '14 days')
+    )
+ORDER BY expected_start_time DESC
+LIMIT $1
+`
+
+// GetMatchesToReconcile lists matches the feeds no longer settle: past their
+// start, not live, and not in a terminal status. status IS NULL is the backlog
+// from before the column existed, including rows wrongly marked finished, so it
+// has no age limit. Other rows get two weeks, so a match postponed indefinitely
+// can't hold a place in the batch forever.
+func (q *Queries) GetMatchesToReconcile(ctx context.Context, limit int32) ([]int32, error) {
+	rows, err := q.db.Query(ctx, getMatchesToReconcile, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSeriesByGameID = `-- name: GetSeriesByGameID :many
 SELECT id, name, slug, game_id, league_id FROM series WHERE game_id = $1 ORDER BY name ASC
 `
@@ -166,7 +204,7 @@ func (q *Queries) InsertToLeagues(ctx context.Context, arg InsertToLeaguesParams
 }
 
 const insertToMatches = `-- name: InsertToMatches :exec
-INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id, stream_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ON CONFLICT (id) DO UPDATE SET
+INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id, stream_url, status, modified_at, forfeit, winner_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug = EXCLUDED.slug,
     finished = EXCLUDED.finished,
@@ -181,17 +219,28 @@ INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_
     league_id = EXCLUDED.league_id,
     series_id = EXCLUDED.series_id,
     tournament_id = EXCLUDED.tournament_id,
-    stream_url = EXCLUDED.stream_url
-WHERE (
+    stream_url = EXCLUDED.stream_url,
+    status = EXCLUDED.status,
+    modified_at = EXCLUDED.modified_at,
+    forfeit = EXCLUDED.forfeit,
+    winner_id = EXCLUDED.winner_id,
+    revision = matches.revision + 1,
+    -- A settled match can't still be live, whatever the last poll said.
+    is_live = matches.is_live AND NOT EXCLUDED.finished AND EXCLUDED.status IS DISTINCT FROM 'canceled'
+WHERE (EXCLUDED.modified_at IS NULL OR matches.modified_at IS NULL OR EXCLUDED.modified_at >= matches.modified_at)
+AND (
     matches.name, matches.slug, matches.finished, matches.expected_start_time,
     matches.actual_game_time, matches.team1_id, matches.team1_score, matches.team2_id,
     matches.team2_score, matches.amount_of_games, matches.game_id, matches.league_id,
-    matches.series_id, matches.tournament_id, matches.stream_url
+    matches.series_id, matches.tournament_id, matches.stream_url, matches.status,
+    matches.forfeit, matches.winner_id, matches.is_live
 ) IS DISTINCT FROM (
     EXCLUDED.name, EXCLUDED.slug, EXCLUDED.finished, EXCLUDED.expected_start_time,
     EXCLUDED.actual_game_time, EXCLUDED.team1_id, EXCLUDED.team1_score, EXCLUDED.team2_id,
     EXCLUDED.team2_score, EXCLUDED.amount_of_games, EXCLUDED.game_id, EXCLUDED.league_id,
-    EXCLUDED.series_id, EXCLUDED.tournament_id, EXCLUDED.stream_url
+    EXCLUDED.series_id, EXCLUDED.tournament_id, EXCLUDED.stream_url, EXCLUDED.status,
+    EXCLUDED.forfeit, EXCLUDED.winner_id,
+    matches.is_live AND NOT EXCLUDED.finished AND EXCLUDED.status IS DISTINCT FROM 'canceled'
 )
 `
 
@@ -212,8 +261,15 @@ type InsertToMatchesParams struct {
 	SeriesID          int32
 	TournamentID      int32
 	StreamURL         pgtype.Text
+	Status            pgtype.Text
+	ModifiedAt        pgtype.Timestamp
+	Forfeit           bool
+	WinnerID          int32
 }
 
+// The running feed and the paged lists overlap, so a page fetched moments ago
+// can carry older data than the row. modified_at stays out of the comparison
+// below: an upstream touch that changes nothing shown isn't a revision.
 func (q *Queries) InsertToMatches(ctx context.Context, arg InsertToMatchesParams) error {
 	_, err := q.db.Exec(ctx, insertToMatches,
 		arg.ID,
@@ -232,6 +288,10 @@ func (q *Queries) InsertToMatches(ctx context.Context, arg InsertToMatchesParams
 		arg.SeriesID,
 		arg.TournamentID,
 		arg.StreamURL,
+		arg.Status,
+		arg.ModifiedAt,
+		arg.Forfeit,
+		arg.WinnerID,
 	)
 	return err
 }
@@ -354,6 +414,18 @@ func (q *Queries) LeagueExist(ctx context.Context, id int32) (int64, error) {
 	return count, err
 }
 
+const markMatchRemoved = `-- name: MarkMatchRemoved :exec
+UPDATE MATCHES
+SET status = 'removed', finished = false, is_live = false, revision = revision + 1, modified_at = NOW()
+WHERE id = $1 AND status IS DISTINCT FROM 'removed'
+`
+
+// MarkMatchRemoved records that PandaScore no longer has this match.
+func (q *Queries) MarkMatchRemoved(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, markMatchRemoved, id)
+	return err
+}
+
 const matchExist = `-- name: MatchExist :one
 SELECT COUNT(*) FROM matches WHERE id = $1
 `
@@ -376,19 +448,42 @@ func (q *Queries) SeriesExist(ctx context.Context, id int32) (int64, error) {
 	return count, err
 }
 
-const syncMatchesIsLive = `-- name: SyncMatchesIsLive :exec
+const syncMatchesIsLive = `-- name: SyncMatchesIsLive :many
 UPDATE MATCHES SET is_live = (id = ANY(COALESCE($1::int[], '{}')))
 WHERE is_live IS DISTINCT FROM (id = ANY(COALESCE($1::int[], '{}')))
+RETURNING id, is_live
 `
+
+type SyncMatchesIsLiveRow struct {
+	ID     int32
+	IsLive bool
+}
 
 // SyncMatchesIsLive sets is_live to true for exactly the given ids. Postgres
 // writes a new row version for every row an UPDATE matches, even when the value
 // is unchanged, so the WHERE must skip rows that are already correct. The
 // upserts above carry the same IS DISTINCT FROM guard for the same reason.
 // COALESCE matters: pgx sends a nil slice as NULL, and id = ANY(NULL) is NULL.
-func (q *Queries) SyncMatchesIsLive(ctx context.Context, liveIds []int32) error {
-	_, err := q.db.Exec(ctx, syncMatchesIsLive, liveIds)
-	return err
+// Returns the rows it flipped: one that went false has just left the running
+// feed, so its final state has to be fetched by id.
+func (q *Queries) SyncMatchesIsLive(ctx context.Context, liveIds []int32) ([]SyncMatchesIsLiveRow, error) {
+	rows, err := q.db.Query(ctx, syncMatchesIsLive, liveIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SyncMatchesIsLiveRow
+	for rows.Next() {
+		var i SyncMatchesIsLiveRow
+		if err := rows.Scan(&i.ID, &i.IsLive); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const teamExist = `-- name: TeamExist :one

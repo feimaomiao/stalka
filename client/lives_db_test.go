@@ -229,7 +229,7 @@ func TestSyncMatchesIsLiveNilClearsFlags(t *testing.T) {
 	client := newDBClient(t)
 	pollLives(t, client, 1, 2)
 
-	if err := dbtypes.New(pool).SyncMatchesIsLive(context.Background(), nil); err != nil {
+	if _, err := dbtypes.New(pool).SyncMatchesIsLive(context.Background(), nil); err != nil {
 		t.Fatalf("SyncMatchesIsLive: %v", err)
 	}
 	assertLive(t)
@@ -247,6 +247,8 @@ func TestUpsertsSkipUnchangedRows(t *testing.T) {
 	renamedMatch.Name = "Renamed"
 	scoredMatch := match
 	scoredMatch.Team1Score = 2
+	canceledMatch := match
+	canceledMatch.Status = pandatypes.MatchStatusCanceled
 
 	cases := []struct {
 		name    string
@@ -281,6 +283,7 @@ func TestUpsertsSkipUnchangedRows(t *testing.T) {
 		},
 		{name: "match name", table: "matches", id: 9001, row: match, changed: renamedMatch},
 		{name: "match score", table: "matches", id: 9001, row: match, changed: scoredMatch},
+		{name: "match status", table: "matches", id: 9001, row: match, changed: canceledMatch},
 		{
 			name: "team", table: "teams", id: 700,
 			row:     pandatypes.TeamRow{ID: 700, Name: "Team", Slug: "team", Acronym: "T", GameID: 1},
@@ -307,6 +310,251 @@ func TestUpsertsSkipUnchangedRows(t *testing.T) {
 				t.Fatalf("changed write: %v", err)
 			}
 			assertRowsChanged(t, before, rowVersions(t, tc.table), tc.id)
+		})
+	}
+}
+
+// TestSyncMatchesIsLiveReturnsFlips pins what GetLives relies on to spot a match
+// that just ended: both directions come back, and untouched rows don't.
+func TestSyncMatchesIsLiveReturnsFlips(t *testing.T) {
+	seedMatches(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `UPDATE matches SET is_live = true WHERE id IN (1, 2)`); err != nil {
+		t.Fatalf("seed live rows: %v", err)
+	}
+
+	rows, err := dbtypes.New(pool).SyncMatchesIsLive(ctx, []int32{2, 3})
+	if err != nil {
+		t.Fatalf("SyncMatchesIsLive: %v", err)
+	}
+	got := make(map[int32]bool)
+	for _, row := range rows {
+		got[row.ID] = row.IsLive
+	}
+	want := map[int32]bool{1: false, 3: true}
+	if len(got) != len(want) || got[1] != want[1] || got[3] != want[3] {
+		t.Fatalf("flipped rows = %v, want %v", got, want)
+	}
+}
+
+func TestGetMatchesToReconcile(t *testing.T) {
+	const (
+		recent = `NOW() - INTERVAL '1 day'`
+		older  = `NOW() - INTERVAL '30 days'`
+		soon   = `NOW() - INTERVAL '30 minutes'`
+		future = `NOW() + INTERVAL '1 day'`
+	)
+	cases := []struct {
+		name   string
+		status string
+		start  string
+		live   bool
+		want   bool
+	}{
+		{name: "no status yet", status: `NULL`, start: recent, want: true},
+		{name: "no status, however old", status: `NULL`, start: older, want: true},
+		{name: "stuck before starting", status: `'not_started'`, start: recent, want: true},
+		{name: "stuck running", status: `'running'`, start: recent, want: true},
+		{name: "postponed", status: `'postponed'`, start: recent, want: true},
+		{name: "unknown upstream status", status: `'new_status'`, start: recent, want: true},
+		{name: "stuck past the age limit", status: `'not_started'`, start: older},
+		{name: "finished", status: `'finished'`, start: recent},
+		{name: "canceled", status: `'canceled'`, start: recent},
+		{name: "removed", status: `'removed'`, start: recent},
+		{name: "live", status: `NULL`, start: recent, live: true},
+		{name: "inside the grace period", status: `'not_started'`, start: soon},
+		{name: "future", status: `NULL`, start: future},
+		{name: "no start time", status: `NULL`, start: `NULL`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seedMatches(t)
+			ctx := context.Background()
+			if _, err := pool.Exec(ctx, `UPDATE matches SET status = 'finished'`); err != nil {
+				t.Fatalf("settle rows: %v", err)
+			}
+			stmt := fmt.Sprintf(`UPDATE matches SET status = %s, expected_start_time = %s, is_live = %t WHERE id = 1`,
+				tc.status, tc.start, tc.live)
+			if _, err := pool.Exec(ctx, stmt); err != nil {
+				t.Fatalf("seed row: %v", err)
+			}
+
+			ids, err := dbtypes.New(pool).GetMatchesToReconcile(ctx, ReconcileBatch)
+			if err != nil {
+				t.Fatalf("GetMatchesToReconcile: %v", err)
+			}
+			if got := len(ids) == 1; got != tc.want {
+				t.Fatalf("selected %v, want selected = %t", ids, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetMatchesToReconcileNewestFirst(t *testing.T) {
+	seedMatches(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `UPDATE matches SET expected_start_time = NOW() - id * INTERVAL '1 day'`); err != nil {
+		t.Fatalf("seed start times: %v", err)
+	}
+
+	ids, err := dbtypes.New(pool).GetMatchesToReconcile(ctx, 3)
+	if err != nil {
+		t.Fatalf("GetMatchesToReconcile: %v", err)
+	}
+	if fmt.Sprint(ids) != "[1 2 3]" {
+		t.Fatalf("ids = %v, want the 3 most recent", ids)
+	}
+}
+
+// A wrongly finished 0-0 row has to come back out of the finished state.
+func TestMarkMatchRemovedClearsFinished(t *testing.T) {
+	seedMatches(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `UPDATE matches SET finished = true, is_live = true WHERE id = 1`); err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+	if err := dbtypes.New(pool).MarkMatchRemoved(ctx, 1); err != nil {
+		t.Fatalf("MarkMatchRemoved: %v", err)
+	}
+
+	var status string
+	var finished, isLive bool
+	row := pool.QueryRow(ctx, `SELECT status, finished, is_live FROM matches WHERE id = 1`)
+	if err := row.Scan(&status, &finished, &isLive); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if status != "removed" || finished || isLive {
+		t.Fatalf("got status=%s finished=%t is_live=%t", status, finished, isLive)
+	}
+}
+
+func readMatchState(t *testing.T, id int32) (revision int32, isLive bool) {
+	t.Helper()
+	row := pool.QueryRow(context.Background(), `SELECT revision, is_live FROM matches WHERE id = $1`, id)
+	if err := row.Scan(&revision, &isLive); err != nil {
+		t.Fatalf("read match: %v", err)
+	}
+	return revision, isLive
+}
+
+// TestMatchUpsertIgnoresOlderData pins the guard against a page fetched before
+// the row's latest write, which would otherwise briefly undo a newer score.
+func TestMatchUpsertIgnoresOlderData(t *testing.T) {
+	seedMatches(t)
+	ctx := context.Background()
+	queries := dbtypes.New(pool)
+	newer := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	base := pandatypes.MatchRow{
+		ID: 9001, Name: "Upsert", Slug: "upsert", AmountOfGames: 3,
+		GameID: 1, LeagueID: 10, SerieID: 100, TournamentID: 1000, Status: "running",
+	}
+	current := base
+	current.ModifiedAt = newer
+	current.Team1Score = 2
+	if err := current.WriteToDB(ctx, queries); err != nil {
+		t.Fatalf("write current: %v", err)
+	}
+
+	stale := base
+	stale.ModifiedAt = newer.Add(-time.Minute)
+	stale.Team1Score = 1
+	if err := stale.WriteToDB(ctx, queries); err != nil {
+		t.Fatalf("write stale: %v", err)
+	}
+	var score int32
+	if err := pool.QueryRow(ctx, `SELECT team1_score FROM matches WHERE id = 9001`).Scan(&score); err != nil {
+		t.Fatalf("read score: %v", err)
+	}
+	if score != 2 {
+		t.Fatalf("score = %d, older data overwrote it", score)
+	}
+
+	fresh := base
+	fresh.ModifiedAt = newer.Add(time.Minute)
+	fresh.Team1Score = 3
+	if err := fresh.WriteToDB(ctx, queries); err != nil {
+		t.Fatalf("write fresh: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT team1_score FROM matches WHERE id = 9001`).Scan(&score); err != nil {
+		t.Fatalf("read score: %v", err)
+	}
+	if score != 3 {
+		t.Fatalf("score = %d, newer data was dropped", score)
+	}
+}
+
+func TestMatchRevisionCountsRealChanges(t *testing.T) {
+	seedMatches(t)
+	ctx := context.Background()
+	queries := dbtypes.New(pool)
+	match := pandatypes.MatchRow{
+		ID: 9001, Name: "Upsert", Slug: "upsert", AmountOfGames: 3,
+		GameID: 1, LeagueID: 10, SerieID: 100, TournamentID: 1000, Status: "not_started",
+	}
+	write := func(row pandatypes.MatchRow) {
+		t.Helper()
+		if err := row.WriteToDB(ctx, queries); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	write(match)
+	write(match)
+	if revision, _ := readMatchState(t, 9001); revision != 0 {
+		t.Fatalf("revision = %d after identical write, want 0", revision)
+	}
+
+	// An upstream touch that changes nothing shown is not a revision.
+	touched := match
+	touched.ModifiedAt = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	write(touched)
+	if revision, _ := readMatchState(t, 9001); revision != 0 {
+		t.Fatalf("revision = %d after a no-op touch, want 0", revision)
+	}
+
+	moved := match
+	moved.ExpectedStartTime = time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	write(moved)
+	if revision, _ := readMatchState(t, 9001); revision != 1 {
+		t.Fatalf("revision = %d after a reschedule, want 1", revision)
+	}
+
+	if err := queries.MarkMatchRemoved(ctx, 9001); err != nil {
+		t.Fatalf("MarkMatchRemoved: %v", err)
+	}
+	if err := queries.MarkMatchRemoved(ctx, 9001); err != nil {
+		t.Fatalf("MarkMatchRemoved again: %v", err)
+	}
+	if revision, _ := readMatchState(t, 9001); revision != 2 {
+		t.Fatalf("revision = %d after removal, want 2: repeats must not bump it", revision)
+	}
+}
+
+func TestSettledMatchIsNotLive(t *testing.T) {
+	cases := []struct {
+		name string
+		row  pandatypes.MatchRow
+		want bool
+	}{
+		{name: "finished", row: pandatypes.MatchRow{Finished: true, Status: "finished"}},
+		{name: "canceled", row: pandatypes.MatchRow{Status: pandatypes.MatchStatusCanceled}},
+		{name: "still running", row: pandatypes.MatchRow{Status: "running"}, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seedMatches(t)
+			ctx := context.Background()
+			if _, err := pool.Exec(ctx, `UPDATE matches SET is_live = true WHERE id = 1`); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			row := tc.row
+			row.ID, row.Name, row.Slug, row.AmountOfGames = 1, "Match", "match", 3
+			row.GameID, row.LeagueID, row.SerieID, row.TournamentID = 1, 10, 100, 1000
+			if err := row.WriteToDB(ctx, dbtypes.New(pool)); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			if _, isLive := readMatchState(t, 1); isLive != tc.want {
+				t.Fatalf("is_live = %t, want %t", isLive, tc.want)
+			}
 		})
 	}
 }
