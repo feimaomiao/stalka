@@ -418,6 +418,10 @@ func TestWriteToDB(t *testing.T) {
 				int32(match.SerieID),
 				int32(match.TournamentID),
 				pgtype.Text{String: "", Valid: false},
+				pgtype.Text{String: match.Status, Valid: match.Status != ""},
+				pgtype.Timestamp{Time: match.ModifiedAt, Valid: !match.ModifiedAt.IsZero()},
+				match.Forfeit,
+				int32(match.WinnerID),
 			).
 			WillReturnResult(
 				pgxmock.NewResult("INSERT", 1),
@@ -537,4 +541,115 @@ func TestWriteToDB(t *testing.T) {
 		err = team.ToRow().WriteToDB(t.Context(), mockQuery)
 		st.Reject(t, err, nil)
 	})
+}
+
+func TestMatchIsFinished(t *testing.T) {
+	ended := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name   string
+		status string
+		endAt  time.Time
+		want   bool
+	}{
+		{name: "not started", status: "not_started"},
+		{name: "running", status: "running"},
+		{name: "postponed", status: "postponed"},
+		{name: "canceled", status: MatchStatusCanceled},
+		{name: "canceled beats a stray end time", status: MatchStatusCanceled, endAt: ended},
+		{name: "finished", status: MatchStatusFinished, endAt: ended, want: true},
+		{name: "finished with no end time", status: MatchStatusFinished, want: true},
+		{name: "end time with no status", endAt: ended, want: true},
+		{name: "nothing known"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			match := MatchLike{Status: tc.status, EndAt: tc.endAt, NumberOfGames: 3}
+			row, ok := match.ToRow().(MatchRow)
+			st.Assert(t, ok, true)
+			st.Expect(t, row.Finished, tc.want)
+			st.Expect(t, row.Status, tc.status)
+		})
+	}
+}
+
+// matchWithOpponents builds a match from opponent ids and {team_id, score} pairs.
+func matchWithOpponents(t *testing.T, opponents []int, results [][2]int) MatchRow {
+	t.Helper()
+	var match MatchLike
+	for _, id := range opponents {
+		var decoded MatchLike
+		body := fmt.Sprintf(`{"opponents":[{"opponent":{"id":%d}}]}`, id)
+		st.Assert(t, json.Unmarshal([]byte(body), &decoded), nil)
+		match.Opponents = append(match.Opponents, decoded.Opponents...)
+	}
+	for _, result := range results {
+		var decoded MatchLike
+		body := fmt.Sprintf(`{"results":[{"team_id":%d,"score":%d}]}`, result[0], result[1])
+		st.Assert(t, json.Unmarshal([]byte(body), &decoded), nil)
+		match.Results = append(match.Results, decoded.Results...)
+	}
+	row, ok := match.ToRow().(MatchRow)
+	st.Assert(t, ok, true)
+	return row
+}
+
+func TestMatchOpponentSlots(t *testing.T) {
+	cases := []struct {
+		name      string
+		opponents []int
+		results   [][2]int
+		want      [4]int // team1 id, team1 score, team2 id, team2 score
+	}{
+		{name: "both TBD"},
+		{name: "both known", opponents: []int{7, 8}, results: [][2]int{{7, 2}, {8, 1}}, want: [4]int{7, 2, 8, 1}},
+		{name: "one known", opponents: []int{7}, results: [][2]int{{7, 0}}, want: [4]int{7, 0, 0, 0}},
+		{name: "one known with no results", opponents: []int{7}, want: [4]int{7, 0, 0, 0}},
+		{name: "two known with no results", opponents: []int{7, 8}, want: [4]int{7, 0, 8, 0}},
+		{name: "two known with short results", opponents: []int{7, 8}, results: [][2]int{{7, 1}}, want: [4]int{7, 1, 8, 0}},
+		{name: "scores follow the team, not the order", opponents: []int{7, 8}, results: [][2]int{{8, 1}, {7, 2}}, want: [4]int{7, 2, 8, 1}},
+		{name: "player results have no team id", opponents: []int{7, 8}, results: [][2]int{{0, 2}, {0, 1}}, want: [4]int{7, 2, 8, 1}},
+		{name: "more than two sides is not a versus match", opponents: []int{7, 8, 9}, results: [][2]int{{7, 1}, {8, 2}, {9, 3}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			row := matchWithOpponents(t, tc.opponents, tc.results)
+			st.Expect(t, [4]int{row.Team1ID, row.Team1Score, row.Team2ID, row.Team2Score}, tc.want)
+		})
+	}
+}
+
+func TestMatchActualGameTimeStaysFinite(t *testing.T) {
+	begin := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	end := begin.Add(3 * time.Hour)
+	cases := []struct {
+		name       string
+		begin, end time.Time
+		games      int
+		want       float64
+	}{
+		{name: "played", begin: begin, end: end, games: 3, want: 3600},
+		{name: "no games", begin: begin, end: end, games: 0},
+		{name: "no begin", end: end, games: 3},
+		{name: "no end", begin: begin, games: 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			match := MatchLike{BeginAt: tc.begin, EndAt: tc.end, NumberOfGames: tc.games}
+			row, ok := match.ToRow().(MatchRow)
+			st.Assert(t, ok, true)
+			st.Expect(t, row.ActualGameTime, tc.want)
+		})
+	}
+}
+
+func TestMatchCarriesForfeitAndModifiedAt(t *testing.T) {
+	var match MatchLike
+	body := `{"status": "canceled", "forfeit": true, "winner_id": 7, "modified_at": "2026-11-06T12:00:00Z"}`
+	st.Assert(t, json.Unmarshal([]byte(body), &match), nil)
+	row, ok := match.ToRow().(MatchRow)
+	st.Assert(t, ok, true)
+	st.Expect(t, row.Forfeit, true)
+	st.Expect(t, row.WinnerID, 7)
+	st.Expect(t, row.ModifiedAt, time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC))
+	st.Expect(t, row.Finished, false)
 }

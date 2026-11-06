@@ -49,7 +49,7 @@ WHERE (
 );
 
 -- name: InsertToMatches :exec
-INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id, stream_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ON CONFLICT (id) DO UPDATE SET
+INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_time, team1_id, team1_score, team2_id, team2_score, amount_of_games, game_id, league_id, series_id, tournament_id, stream_url, status, modified_at, forfeit, winner_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug = EXCLUDED.slug,
     finished = EXCLUDED.finished,
@@ -64,17 +64,31 @@ INSERT INTO matches (id, name, slug, finished, expected_start_time, actual_game_
     league_id = EXCLUDED.league_id,
     series_id = EXCLUDED.series_id,
     tournament_id = EXCLUDED.tournament_id,
-    stream_url = EXCLUDED.stream_url
-WHERE (
+    stream_url = EXCLUDED.stream_url,
+    status = EXCLUDED.status,
+    modified_at = EXCLUDED.modified_at,
+    forfeit = EXCLUDED.forfeit,
+    winner_id = EXCLUDED.winner_id,
+    revision = matches.revision + 1,
+    -- A settled match can't still be live, whatever the last poll said.
+    is_live = matches.is_live AND NOT EXCLUDED.finished AND EXCLUDED.status IS DISTINCT FROM 'canceled'
+-- The running feed and the paged lists overlap, so a page fetched moments ago
+-- can carry older data than the row. modified_at stays out of the comparison
+-- below: an upstream touch that changes nothing shown isn't a revision.
+WHERE (EXCLUDED.modified_at IS NULL OR matches.modified_at IS NULL OR EXCLUDED.modified_at >= matches.modified_at)
+AND (
     matches.name, matches.slug, matches.finished, matches.expected_start_time,
     matches.actual_game_time, matches.team1_id, matches.team1_score, matches.team2_id,
     matches.team2_score, matches.amount_of_games, matches.game_id, matches.league_id,
-    matches.series_id, matches.tournament_id, matches.stream_url
+    matches.series_id, matches.tournament_id, matches.stream_url, matches.status,
+    matches.forfeit, matches.winner_id, matches.is_live
 ) IS DISTINCT FROM (
     EXCLUDED.name, EXCLUDED.slug, EXCLUDED.finished, EXCLUDED.expected_start_time,
     EXCLUDED.actual_game_time, EXCLUDED.team1_id, EXCLUDED.team1_score, EXCLUDED.team2_id,
     EXCLUDED.team2_score, EXCLUDED.amount_of_games, EXCLUDED.game_id, EXCLUDED.league_id,
-    EXCLUDED.series_id, EXCLUDED.tournament_id, EXCLUDED.stream_url
+    EXCLUDED.series_id, EXCLUDED.tournament_id, EXCLUDED.stream_url, EXCLUDED.status,
+    EXCLUDED.forfeit, EXCLUDED.winner_id,
+    matches.is_live AND NOT EXCLUDED.finished AND EXCLUDED.status IS DISTINCT FROM 'canceled'
 );
 
 -- name: InsertToTeams :exec
@@ -128,6 +142,32 @@ ORDER BY MIN(t.tier) ASC, l.name ASC;
 -- is unchanged, so the WHERE must skip rows that are already correct. The
 -- upserts above carry the same IS DISTINCT FROM guard for the same reason.
 -- COALESCE matters: pgx sends a nil slice as NULL, and id = ANY(NULL) is NULL.
--- name: SyncMatchesIsLive :exec
+-- Returns the rows it flipped: one that went false has just left the running
+-- feed, so its final state has to be fetched by id.
+-- name: SyncMatchesIsLive :many
 UPDATE MATCHES SET is_live = (id = ANY(COALESCE(sqlc.arg(live_ids)::int[], '{}')))
-WHERE is_live IS DISTINCT FROM (id = ANY(COALESCE(sqlc.arg(live_ids)::int[], '{}')));
+WHERE is_live IS DISTINCT FROM (id = ANY(COALESCE(sqlc.arg(live_ids)::int[], '{}')))
+RETURNING id, is_live;
+
+-- GetMatchesToReconcile lists matches the feeds no longer settle: past their
+-- start, not live, and not in a terminal status. status IS NULL is the backlog
+-- from before the column existed, including rows wrongly marked finished, so it
+-- has no age limit. Other rows get two weeks, so a match postponed indefinitely
+-- can't hold a place in the batch forever.
+-- name: GetMatchesToReconcile :many
+SELECT id FROM MATCHES
+WHERE NOT is_live
+    AND expected_start_time < NOW() - INTERVAL '2 hours'
+    AND (
+        status IS NULL
+        OR (status NOT IN ('finished', 'canceled', 'removed')
+            AND expected_start_time > NOW() - INTERVAL '14 days')
+    )
+ORDER BY expected_start_time DESC
+LIMIT $1;
+
+-- MarkMatchRemoved records that PandaScore no longer has this match.
+-- name: MarkMatchRemoved :exec
+UPDATE MATCHES
+SET status = 'removed', finished = false, is_live = false, revision = revision + 1, modified_at = NOW()
+WHERE id = $1 AND status IS DISTINCT FROM 'removed';

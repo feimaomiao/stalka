@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strconv"
 
 	"github.com/feimaomiao/stalka/pandatypes"
@@ -179,26 +177,15 @@ func (client *PandaClient) GetOne(id int, flag GetChoice) error {
 		return err
 	}
 	client.Logger.Debugf("Getting %s %d", searchString, id)
-	resp, err := client.MakeRequest([]string{searchString, strconv.Itoa(id)}, nil)
+	body, err := client.getBody([]string{searchString, strconv.Itoa(id)}, nil)
 	if err != nil {
-		client.Logger.Error("Error making request to Pandascore API: %v", err)
-		return err
-	}
-	defer resp.Body.Close()
-	// Check if the response status code is 200 OK
-	if resp.StatusCode != http.StatusOK {
-		client.Logger.Error("Error: received status code %d", resp.StatusCode)
-		return fmt.Errorf("received status code %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
+		client.Logger.Errorf("Error getting %s %d: %v", searchString, id, err)
 		return err
 	}
 
 	result, err := client.ParseResponse(body, flag)
 	if err != nil {
-		client.Logger.Error("Error parsing response: %v", err)
+		client.Logger.Errorf("Error parsing response: %v", err)
 		return err
 	}
 

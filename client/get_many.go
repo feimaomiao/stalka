@@ -1,9 +1,10 @@
 package client
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 
@@ -21,21 +22,19 @@ const (
 	SetupPages = 50
 	// firstPage is where Pandascore pagination starts; page=0 is an empty list.
 	firstPage = 1
+	// ReconcileBatch caps the matches ReconcileMatches refetches per run. Each
+	// costs one request against the 1k/hour quota.
+	ReconcileBatch       = 100
+	maxReconcileFailures = 3
 )
 
 // UpdateGames updates all games in the database.
 // @returns an error if one occurred.
 func (client *PandaClient) UpdateGames() error {
 	client.Logger.Info("Updating games")
-	resp, err := client.MakeRequest([]string{"videogames"}, nil)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		client.Logger.Errorf("Error making request to Pandascore API: %v", err)
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := client.getBody([]string{"videogames"}, nil)
 	if err != nil {
+		client.Logger.Errorf("Error fetching from Pandascore: %v", err)
 		return err
 	}
 
@@ -50,7 +49,7 @@ func (client *PandaClient) UpdateGames() error {
 		err = game.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 		if err != nil {
 			client.Logger.Errorf("Error writing game %s to database: %v", game.Name, err)
-			return err
+			continue
 		}
 	}
 	return nil
@@ -64,16 +63,9 @@ func (client *PandaClient) GetLeagues(setup bool) error {
 	keys["sort"] = sortedBy
 	for i := range Pages {
 		keys["page"] = strconv.Itoa(i + firstPage)
-		resp, err := client.MakeRequest([]string{"leagues"}, keys)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
-			return err
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
+		body, err := client.getBody([]string{"leagues"}, keys)
 		if err != nil {
-			client.Logger.Errorf("Error reading response: %v", err)
+			client.Logger.Errorf("Error fetching from Pandascore: %v", err)
 			return err
 		}
 
@@ -88,7 +80,7 @@ func (client *PandaClient) GetLeagues(setup bool) error {
 			err = league.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
 				client.Logger.Errorf("Error writing league %s to database: %v", league.Name, err)
-				return err
+				continue
 			}
 		}
 		if !setup {
@@ -107,16 +99,9 @@ func (client *PandaClient) GetSeries(setup bool) error {
 	for i := range Pages {
 		client.Logger.Debugf("Getting series page %d", i)
 		keys["page"] = strconv.Itoa(i + firstPage)
-		resp, err := client.MakeRequest([]string{seriesEndpoint}, keys)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
-			return err
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
+		body, err := client.getBody([]string{seriesEndpoint}, keys)
 		if err != nil {
-			client.Logger.Errorf("Error reading response: %v", err)
+			client.Logger.Errorf("Error fetching from Pandascore: %v", err)
 			return err
 		}
 
@@ -142,7 +127,7 @@ func (client *PandaClient) GetSeries(setup bool) error {
 			err = series.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
 				client.Logger.Errorf("Error writing series %s to database: %v", series.Name, err)
-				return err
+				continue
 			}
 		}
 		if !setup {
@@ -161,15 +146,9 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 	for i := range Pages {
 		keys["page"] = strconv.Itoa(i + firstPage)
 		client.Logger.Debugf("Getting tournaments page %d", i)
-		resp, err := client.MakeRequest([]string{"tournaments"}, keys)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
-			return err
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
+		body, err := client.getBody([]string{"tournaments"}, keys)
 		if err != nil {
+			client.Logger.Errorf("Error fetching from Pandascore: %v", err)
 			return err
 		}
 
@@ -195,7 +174,7 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 			err = tournament.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
 				client.Logger.Errorf("Error writing tournament %s to database: %v", tournament.Name, err)
-				return err
+				continue
 			}
 		}
 		if !setup {
@@ -217,24 +196,9 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 	// odd pages are past matches, even pages are upcoming matches
 	pageMap["page"] = strconv.Itoa(page/polarity + firstPage)
 	client.Logger.Debugf("Getting %s matches page %d", reqStr, pageMap["page"])
-	resp, err := client.MakeRequest([]string{matchesEndpoint, reqStr}, pageMap)
+	body, err := client.getBody([]string{matchesEndpoint, reqStr}, pageMap)
 	if err != nil {
-		client.Logger.Errorf("Error making request to Pandascore API on request %d: %v", page, err)
-		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		client.Logger.Errorf("Error making request to Pandascore API %d on request %d", resp.StatusCode, page)
-		ch <- pandatypes.ResultMatchLikes{
-			Matches: nil,
-			Err:     fmt.Errorf("pandascore /matches/%s status %d", reqStr, resp.StatusCode),
-		}
-		return
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		client.Logger.Errorf("Error reading response: %v", err)
+		client.Logger.Errorf("Error fetching match page %d: %v", page, err)
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
@@ -270,13 +234,23 @@ func (client *PandaClient) GetMatches(setup bool) error {
 	}
 	wg.Wait()
 	close(varChan)
+	failed := 0
+	var lastErr error
 	for res := range varChan {
 		if res.Err != nil {
+			failed++
+			lastErr = res.Err
 			continue
 		}
 		result = append(result, res.Matches...)
 	}
 	client.WriteMatches(result)
+	if failed == pageCount {
+		return fmt.Errorf("all %d match pages failed: %w", pageCount, lastErr)
+	}
+	if failed > 0 {
+		client.Logger.Warnf("%d of %d match pages failed: %v", failed, pageCount, lastErr)
+	}
 	return nil
 }
 
@@ -287,16 +261,9 @@ func (client *PandaClient) GetTeams(setup bool) error {
 	for i := range Pages {
 		client.Logger.Debugf("Getting teams page %d", i)
 		keys["page"] = strconv.Itoa(i + firstPage)
-		resp, err := client.MakeRequest([]string{"teams"}, keys)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			client.Logger.Error("Error making request to Pandascore API")
-			return err
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
+		body, err := client.getBody([]string{"teams"}, keys)
 		if err != nil {
-			client.Logger.Errorf("Error reading response: %v", err)
+			client.Logger.Errorf("Error fetching from Pandascore: %v", err)
 			return err
 		}
 
@@ -307,11 +274,16 @@ func (client *PandaClient) GetTeams(setup bool) error {
 			return err
 		}
 		for _, teams := range result {
+			// current_videogame is nullable and teams.game_id is a foreign key.
+			if teams.CurrentVideogame.ID == 0 {
+				client.Logger.Debugf("Skipping team %d, it has no game", teams.ID)
+				continue
+			}
 			client.Logger.Debugf("Writing team %s in game %d", teams.Name, teams.CurrentVideogame.ID)
 			err = teams.ToRow().WriteToDB(client.Ctx, client.DBConnector)
 			if err != nil {
 				client.Logger.Errorf("Error writing team to database: %v", err)
-				return err
+				continue
 			}
 		}
 		if !setup {
@@ -325,32 +297,13 @@ func (client *PandaClient) GetTeams(setup bool) error {
 // Matches in the response have is_live=true; matches not in the response have is_live=false.
 // We use /matches/running (not /lives) because /lives only contains matches PandaScore's
 // broadcast detector has actively verified — it lags real-time by minutes and misses
-// matches whose streams haven't been picked up. /matches/running flips on as soon as a
-// match enters its scheduled run window.
+// matches whose streams haven't been picked up. /matches/running flips on when a match
+// actually starts, which can be before or after its scheduled time.
 func (client *PandaClient) GetLives() error {
 	client.Logger.Info("Getting live matches")
 
-	resp, err := client.MakeRequest([]string{"matches", "running"}, nil)
+	result, err := client.getRunningMatches()
 	if err != nil {
-		client.Logger.Errorf("Error making request to Pandascore /matches/running: %v", err)
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		client.Logger.Errorf("Pandascore /matches/running returned non-OK status: %d", resp.StatusCode)
-		return fmt.Errorf("pandascore /matches/running status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		client.Logger.Errorf("Error reading response: %v", err)
-		return err
-	}
-
-	var result pandatypes.MatchLikes
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		client.Logger.Errorf("Error unmarshalling response: %v", err)
 		return err
 	}
 
@@ -362,6 +315,10 @@ func (client *PandaClient) GetLives() error {
 	// Extract IDs of live matches. Never nil: "nothing is live" must clear flags.
 	liveIDs := make([]int32, 0, len(result))
 	for _, match := range result {
+		// A match can end between the feed updating its status and dropping it.
+		if match.IsFinished() {
+			continue
+		}
 		id32, convErr := pandatypes.SafeIntToInt32(match.ID)
 		if convErr != nil {
 			client.Logger.Errorf("Error converting match ID %d to int32: %v", match.ID, convErr)
@@ -370,12 +327,103 @@ func (client *PandaClient) GetLives() error {
 		liveIDs = append(liveIDs, id32)
 	}
 
-	err = client.DBConnector.SyncMatchesIsLive(client.Ctx, liveIDs)
+	flipped, err := client.DBConnector.SyncMatchesIsLive(client.Ctx, liveIDs)
 	if err != nil {
 		client.Logger.Errorf("Error syncing is_live: %v", err)
 		return err
 	}
 	client.Logger.Debugf("Synced is_live for %d live matches", len(liveIDs))
 
+	// A match that just left the running feed has its result on no list we poll
+	// until the hourly run, so fetch it now. If this fails, that run still has it.
+	for _, row := range flipped {
+		if row.IsLive {
+			continue
+		}
+		if refreshErr := client.refreshMatch(row.ID); refreshErr != nil {
+			client.Logger.Errorf("Error refreshing ended match %d: %v", row.ID, refreshErr)
+		}
+	}
+
 	return nil
+}
+
+// getRunningMatches reads every page of /matches/running. All of them must load:
+// a match missing from this list has is_live cleared, so a partial list would
+// mark running matches as over.
+func (client *PandaClient) getRunningMatches() (pandatypes.MatchLikes, error) {
+	var result pandatypes.MatchLikes
+	keys := make(map[string]string)
+	for i := range Pages {
+		keys["page"] = strconv.Itoa(i + firstPage)
+		body, err := client.getBody([]string{matchesEndpoint, "running"}, keys)
+		if err != nil {
+			client.Logger.Errorf("Error fetching running matches: %v", err)
+			return nil, err
+		}
+		var page pandatypes.MatchLikes
+		if err = json.Unmarshal(body, &page); err != nil {
+			client.Logger.Errorf("Error unmarshalling response: %v", err)
+			return nil, err
+		}
+		result = append(result, page...)
+		if len(page) < perPage {
+			break
+		}
+	}
+	return result, nil
+}
+
+// refreshMatch rewrites one match from its own endpoint, or records that
+// Pandascore no longer has it. Only a 404 for the match itself counts: GetOne
+// also resolves parents, and a missing parent says nothing about the match.
+func (client *PandaClient) refreshMatch(id int32) error {
+	err := client.GetOne(int(id), FlagMatch)
+	var statusErr *StatusError
+	if errors.As(err, &statusErr) && statusErr.Code == http.StatusNotFound &&
+		statusErr.Path == fmt.Sprintf("%s/%d", matchesEndpoint, id) {
+		return client.DBConnector.MarkMatchRemoved(client.Ctx, id)
+	}
+	return err
+}
+
+// ReconcileMatches refetches matches that left every feed without reaching a
+// terminal status, which the feeds alone would never resolve. Canceled matches
+// are the main case. Stops early if Pandascore itself keeps failing, since the
+// rest of the batch would only burn the hourly quota, and the next run picks
+// them up. A failure confined to one match is skipped: stopping for it would
+// halt every run at the same row, because the batch is newest first.
+func (client *PandaClient) ReconcileMatches() error {
+	ids, err := client.DBConnector.GetMatchesToReconcile(client.Ctx, ReconcileBatch)
+	if err != nil {
+		return err
+	}
+	client.Logger.Infof("Reconciling %d matches", len(ids))
+	failures := 0
+	for _, id := range ids {
+		if err = client.refreshMatch(id); err != nil {
+			client.Logger.Errorf("Error reconciling match %d: %v", id, err)
+			if !isUpstreamFailure(err) {
+				continue
+			}
+			failures++
+			if failures >= maxReconcileFailures {
+				return fmt.Errorf("stopped reconciling after %d failures in a row: %w", failures, err)
+			}
+			continue
+		}
+		failures = 0
+	}
+	return nil
+}
+
+// isUpstreamFailure reports whether an error is Pandascore being unavailable,
+// rather than something wrong with one match.
+func isUpstreamFailure(err error) bool {
+	var statusErr *StatusError
+	if errors.As(err, &statusErr) {
+		return isRetryable(statusErr.Code)
+	}
+	var urlErr *url.Error
+	return errors.As(err, &urlErr)
 }
