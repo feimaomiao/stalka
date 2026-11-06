@@ -9,7 +9,6 @@ import (
 
 	"encoding/json"
 
-	"github.com/feimaomiao/stalka/dbtypes"
 	"github.com/feimaomiao/stalka/pandatypes"
 
 	// loads .env file automatically.
@@ -20,6 +19,8 @@ const (
 	sortedBy   = "-modified_at"
 	Pages      = 20
 	SetupPages = 50
+	// firstPage is where Pandascore pagination starts; page=0 is an empty list.
+	firstPage = 1
 )
 
 // UpdateGames updates all games in the database.
@@ -61,8 +62,8 @@ func (client *PandaClient) GetLeagues(setup bool) error {
 	client.Logger.Info("Getting leagues")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
-	for i := range 20 {
-		keys["page"] = strconv.Itoa(i)
+	for i := range Pages {
+		keys["page"] = strconv.Itoa(i + firstPage)
 		resp, err := client.MakeRequest([]string{"leagues"}, keys)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
@@ -103,10 +104,10 @@ func (client *PandaClient) GetSeries(setup bool) error {
 	client.Logger.Info("Getting series")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
-	for i := range 20 {
+	for i := range Pages {
 		client.Logger.Debugf("Getting series page %d", i)
-		keys["page"] = strconv.Itoa(i)
-		resp, err := client.MakeRequest([]string{seriesEndpoint}, nil)
+		keys["page"] = strconv.Itoa(i + firstPage)
+		resp, err := client.MakeRequest([]string{seriesEndpoint}, keys)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			client.Logger.Errorf("Error making request to Pandascore API: %v", err)
 			return err
@@ -157,8 +158,8 @@ func (client *PandaClient) GetTournaments(setup bool) error {
 	client.Logger.Info("Getting tournaments")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
-	for i := range 20 {
-		keys["page"] = strconv.Itoa(i)
+	for i := range Pages {
+		keys["page"] = strconv.Itoa(i + firstPage)
 		client.Logger.Debugf("Getting tournaments page %d", i)
 		resp, err := client.MakeRequest([]string{"tournaments"}, keys)
 		if err != nil || resp.StatusCode != http.StatusOK {
@@ -214,20 +215,23 @@ func (client *PandaClient) getMatchPage(page int, wg *sync.WaitGroup, ch chan<- 
 	}
 	pageMap := make(map[string]string)
 	// odd pages are past matches, even pages are upcoming matches
-	pageMap["page"] = strconv.Itoa(page / polarity)
+	pageMap["page"] = strconv.Itoa(page/polarity + firstPage)
 	client.Logger.Debugf("Getting %s matches page %d", reqStr, pageMap["page"])
 	resp, err := client.MakeRequest([]string{matchesEndpoint, reqStr}, pageMap)
 	if err != nil {
-		client.Logger.Errorf("Error making request to Pandascore API %v, %d on request %d", err, resp.StatusCode, page)
-		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
-		return
-	}
-	if resp.StatusCode != http.StatusOK {
-		client.Logger.Errorf("Error making request to Pandascore API %d on request %d", resp.StatusCode, page)
+		client.Logger.Errorf("Error making request to Pandascore API on request %d: %v", page, err)
 		ch <- pandatypes.ResultMatchLikes{Matches: nil, Err: err}
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		client.Logger.Errorf("Error making request to Pandascore API %d on request %d", resp.StatusCode, page)
+		ch <- pandatypes.ResultMatchLikes{
+			Matches: nil,
+			Err:     fmt.Errorf("pandascore /matches/%s status %d", reqStr, resp.StatusCode),
+		}
+		return
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		client.Logger.Errorf("Error reading response: %v", err)
@@ -280,10 +284,10 @@ func (client *PandaClient) GetTeams(setup bool) error {
 	client.Logger.Info("Getting teams")
 	keys := make(map[string]string)
 	keys["sort"] = sortedBy
-	for i := range 20 {
+	for i := range Pages {
 		client.Logger.Debugf("Getting teams page %d", i)
-		keys["page"] = strconv.Itoa(i)
-		resp, err := client.MakeRequest([]string{"teams"}, nil)
+		keys["page"] = strconv.Itoa(i + firstPage)
+		resp, err := client.MakeRequest([]string{"teams"}, keys)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			client.Logger.Error("Error making request to Pandascore API")
 			return err
@@ -355,8 +359,8 @@ func (client *PandaClient) GetLives() error {
 	// Write live matches to DB (refreshes stream_url etc.)
 	client.WriteMatches(result)
 
-	// Extract IDs of live matches
-	var liveIDs []int32
+	// Extract IDs of live matches. Never nil: "nothing is live" must clear flags.
+	liveIDs := make([]int32, 0, len(result))
 	for _, match := range result {
 		id32, convErr := pandatypes.SafeIntToInt32(match.ID)
 		if convErr != nil {
@@ -366,26 +370,12 @@ func (client *PandaClient) GetLives() error {
 		liveIDs = append(liveIDs, id32)
 	}
 
-	// Update is_live for live matches
-	if len(liveIDs) > 0 {
-		err = client.DBConnector.UpdateMatchesIsLiveByIDs(client.Ctx, dbtypes.UpdateMatchesIsLiveByIDsParams{
-			IsLive:  true,
-			Column2: liveIDs,
-		})
-		if err != nil {
-			client.Logger.Errorf("Error updating is_live for live matches: %v", err)
-			return err
-		}
-		client.Logger.Debugf("Updated %d matches to is_live=true", len(liveIDs))
-	}
-
-	// Clear is_live for non-live matches
-	err = client.DBConnector.ClearMatchesIsLiveExceptIDs(client.Ctx, liveIDs)
+	err = client.DBConnector.SyncMatchesIsLive(client.Ctx, liveIDs)
 	if err != nil {
-		client.Logger.Errorf("Error clearing is_live for non-live matches: %v", err)
+		client.Logger.Errorf("Error syncing is_live: %v", err)
 		return err
 	}
-	client.Logger.Debug("Cleared is_live for non-live matches")
+	client.Logger.Debugf("Synced is_live for %d live matches", len(liveIDs))
 
 	return nil
 }

@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 env:
   REGISTRY: ghcr.io
@@ -20,7 +23,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: test
-        run: go test ./...
+        run: go test -race -cover ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
@@ -30,8 +33,23 @@ jobs:
         run: |
           calculatedSha=$(git rev-parse --short ${{ github.sha }})
           echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
+  # Real-Postgres tests behind the `dbtest` build tag. pgxmock only sees which
+  # SQL was sent, so anything about what a query does to rows belongs here.
+  # Docker comes preinstalled on ubuntu-latest runners.
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: go test (dbtest)
+        run: go test -race -tags=dbtest ./client/...
+
   build-and-push-image:
-    needs: golangci
+    needs: [golangci, integration-tests]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
     permissions:

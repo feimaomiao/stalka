@@ -341,7 +341,6 @@ func TestExistCheck(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         t.Context(),
 	}
 	// this should fail
@@ -480,7 +479,6 @@ func TestParseResponse(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -544,7 +542,6 @@ func TestEnsureDependencies(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -649,7 +646,6 @@ func TestGetOne(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -705,7 +701,6 @@ func TestWriteMatchesErrorPaths(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         context.Background(),
 	}
 
@@ -787,7 +782,6 @@ func TestCheckTeam(t *testing.T) {
 		Logger:      logger,
 		HTTPClient:  &http.Client{},
 		DBConnector: mockQueries,
-		Run:         0,
 		Ctx:         t.Context(),
 	}
 
@@ -851,4 +845,26 @@ func TestCheckTeam(t *testing.T) {
 	r = recover()
 	st.Expect(t, r, nil)
 	st.Expect(t, mockDB.ExpectationsWereMet(), nil)
+}
+
+// A body that fails to parse must surface as an error. GetOne used to carry on
+// and call ToRow on the nil result, which panicked and killed the process.
+func TestGetOneBadBodyReturnsError(t *testing.T) {
+	mockDB, err := pgxmock.NewPool()
+	st.Assert(t, err, nil)
+	defer mockDB.Close()
+
+	client := &PandaClient{
+		BaseURL:     "https://api.pandascore.io",
+		Pandasecret: "fakesecret",
+		Logger:      zaptest.NewLogger(t).Sugar(),
+		HTTPClient:  &http.Client{},
+		DBConnector: dbtypes.New(mockDB),
+		Ctx:         context.Background(),
+	}
+	gock.InterceptClient(client.HTTPClient)
+	defer gock.Off()
+	gock.New("https://api.pandascore.io").Get("/teams/1").Reply(http.StatusOK).BodyString("not json")
+
+	st.Reject(t, client.GetOne(1, FlagTeam), nil)
 }
